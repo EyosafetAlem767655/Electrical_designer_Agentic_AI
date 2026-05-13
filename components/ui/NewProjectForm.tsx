@@ -30,39 +30,63 @@ export function NewProjectForm() {
 
   return (
     <form action={submit} className="grid gap-4">
-      {[
-        ["projectName", "Project name", "Nova Heights"],
-        ["architectName", "Architect name", "Amanuel Tesfaye"],
-        ["architectTelegramUsername", "Telegram username", "@architect"],
-        ["companyName", "Company/client name", "Client company"],
-        ["buildingAddress", "Building address", "Addis Ababa"],
-        ["groupChatId", "Telegram group chat ID", "-1001234567890"]
-      ].map(([name, label, placeholder]) => (
-        <label key={name} className="block">
-          <span className="mono-font text-xs text-cyan-100/62">{label}</span>
-          <input
-            name={name}
-            required={["projectName", "architectName", "architectTelegramUsername"].includes(name)}
-            placeholder={placeholder}
-            className="mt-2 h-11 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58"
-          />
-        </label>
-      ))}
+      <fieldset className="grid gap-4 border-b border-[#c6a171]/14 pb-5">
+        <legend className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#c9b9a6]/54">Project</legend>
+        <div className="grid gap-4 md:grid-cols-2">
+          {[
+            ["projectName", "Project name", "Nova Heights"],
+            ["companyName", "Company/client name", "Client company"],
+            ["buildingAddress", "Building address", "Addis Ababa"]
+          ].map(([name, label, placeholder]) => (
+            <label key={name} className={name === "projectName" ? "block md:col-span-2" : "block"}>
+              <span className="text-xs font-medium text-[#c9b9a6]/62">{label}</span>
+              <input
+                name={name}
+                required={name === "projectName"}
+                placeholder={placeholder}
+                className="mt-2 h-11 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58"
+              />
+            </label>
+          ))}
+          <label className="block">
+            <span className="text-xs font-medium text-[#c9b9a6]/62">Building purpose</span>
+            <select name="buildingPurpose" className="mt-2 h-11 w-full rounded border border-[#c6a171]/20 bg-[#140f0c] px-3 text-[#f7f2ea] outline-none transition focus:border-[#d6b17d]/58">
+              <option>Residential</option>
+              <option>Commercial</option>
+              <option>Mixed-use</option>
+              <option>Industrial</option>
+              <option>Healthcare</option>
+              <option>Hospitality</option>
+              <option>Education</option>
+            </select>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset className="grid gap-4 border-b border-[#c6a171]/14 pb-5">
+        <legend className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#c9b9a6]/54">Architect Handoff</legend>
+        <div className="grid gap-4 md:grid-cols-2">
+          {[
+            ["architectName", "Architect name", "Amanuel Tesfaye"],
+            ["architectTelegramUsername", "Telegram username", "@architect"],
+            ["groupChatId", "Telegram group chat ID", "-1001234567890"]
+          ].map(([name, label, placeholder]) => (
+            <label key={name} className="block">
+              <span className="text-xs font-medium text-[#c9b9a6]/62">{label}</span>
+              <input
+                name={name}
+                required={["architectName", "architectTelegramUsername"].includes(name)}
+                placeholder={placeholder}
+                className="mt-2 h-11 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58"
+              />
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
       <label className="block">
-        <span className="mono-font text-xs text-cyan-100/62">Building purpose</span>
-        <select name="buildingPurpose" className="mt-2 h-11 w-full rounded border border-[#c6a171]/20 bg-[#140f0c] px-3 text-[#f7f2ea] outline-none transition focus:border-[#d6b17d]/58">
-          <option>Residential</option>
-          <option>Commercial</option>
-          <option>Mixed-use</option>
-          <option>Industrial</option>
-          <option>Healthcare</option>
-          <option>Hospitality</option>
-          <option>Education</option>
-        </select>
-      </label>
-      <label className="block">
-        <span className="mono-font text-xs text-cyan-100/62">Notes</span>
-        <textarea name="notes" className="mt-2 min-h-24 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 py-2 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58" placeholder="Optional admin notes" />
+        <span className="text-xs font-medium text-[#c9b9a6]/62">Admin notes</span>
+        <textarea name="notes" className="mt-2 min-h-24 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 py-2 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58" placeholder="Optional internal context for review" />
       </label>
       {error ? <p className="rounded border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">{error}</p> : null}
       <NeonButton type="submit" disabled={busy}>

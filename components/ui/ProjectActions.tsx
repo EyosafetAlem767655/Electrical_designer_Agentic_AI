@@ -40,8 +40,8 @@ export function ProjectActions({ projectId, floor, design }: { projectId: string
   }
 
   return (
-    <div className="glass-panel rounded-lg p-4">
-      <p className="tech-font text-sm font-semibold text-white">Engineering Review</p>
+    <div>
+      <p className="text-sm font-semibold text-[#fffaf0]">Engineering Review</p>
       <div className="mt-4 flex flex-wrap gap-2">
         <NeonButton disabled={!floor || busy !== null} onClick={() => floor && post(`/api/projects/${projectId}/approve`, { floorId: floor.id })}>
           <Check className="h-4 w-4" />
@@ -57,7 +57,7 @@ export function ProjectActions({ projectId, floor, design }: { projectId: string
         </NeonButton>
       </div>
       <label className="mt-4 block">
-        <span className="mono-font text-xs text-cyan-100/62">Revision notes</span>
+        <span className="text-xs font-medium text-[#c9b9a6]/62">Revision notes</span>
         <textarea
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
