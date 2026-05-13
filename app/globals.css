@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0a0f;
+  --foreground: #edfaff;
+  --font-rajdhani: "Rajdhani", "Segoe UI", sans-serif;
+  --font-orbitron: "Orbitron", "Segoe UI", sans-serif;
+  --font-jetbrains: "JetBrains Mono", Consolas, monospace;
+  --panel: rgba(13, 18, 28, 0.72);
+  --panel-strong: rgba(17, 26, 38, 0.94);
+  --line: rgba(0, 240, 255, 0.26);
+  --cyan: #00f0ff;
+  --yellow: #e8ff00;
+  --green: #00ff88;
+  --red: #ff3366;
+  --blue: #39a7ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--foreground);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(0, 240, 255, 0.12), transparent 30%),
+    radial-gradient(circle at 88% 16%, rgba(232, 255, 0, 0.08), transparent 26%),
+    linear-gradient(180deg, #07070b 0%, #0a0a0f 48%, #070a0c 100%);
+  font-family: var(--font-rajdhani), "Rajdhani", "Segoe UI", sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(0, 240, 255, 0.28);
+}
+
+.tech-font {
+  font-family: var(--font-orbitron), "Orbitron", "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+.mono-font {
+  font-family: var(--font-jetbrains), "JetBrains Mono", Consolas, monospace;
+}
+
+.glass-panel {
+  background: linear-gradient(135deg, rgba(16, 24, 36, 0.82), rgba(7, 10, 16, 0.72));
+  border: 1px solid rgba(0, 240, 255, 0.24);
+  box-shadow: 0 0 26px rgba(0, 240, 255, 0.08), inset 0 0 24px rgba(0, 240, 255, 0.03);
+  backdrop-filter: blur(16px);
+}
+
+.scan-line {
+  position: relative;
+  overflow: hidden;
+}
+
+.scan-line::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(0, 240, 255, 0.08), transparent);
+  transform: translateY(-100%);
+  animation: scan 5s linear infinite;
+}
+
+@keyframes scan {
+  to {
+    transform: translateY(100%);
+  }
+}
+
+.grid-overlay {
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.06) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(180deg, black, transparent 90%);
+}
+
+.neon-border {
+  border: 1px solid rgba(0, 240, 255, 0.34);
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.12);
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 240, 255, 0.42) rgba(255, 255, 255, 0.04);
+}
