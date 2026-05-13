@@ -28,7 +28,7 @@ function ParticleGrid() {
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
       </bufferGeometry>
-      <pointsMaterial color="#b89162" size={0.038} transparent opacity={0.28} />
+      <pointsMaterial color="#6d5a87" size={0.032} transparent opacity={0.1} />
     </points>
   );
 }

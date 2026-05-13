@@ -6,10 +6,10 @@ import { cx } from "@/lib/utils";
 type Variant = "primary" | "secondary" | "danger" | "ghost";
 
 const variants: Record<Variant, string> = {
-  primary: "border-[#d6b17d]/60 bg-[#6d4c34]/28 text-[#fffaf0] shadow-[0_14px_30px_rgba(0,0,0,0.18)] hover:bg-[#7c573c]/34",
-  secondary: "border-[#c2a177]/48 bg-[#f7f2ea]/8 text-[#f7f2ea] shadow-[0_14px_30px_rgba(0,0,0,0.14)] hover:bg-[#f7f2ea]/12",
-  danger: "border-[#b26457]/50 bg-[#7c3f35]/18 text-[#f6dfd9] shadow-[0_14px_30px_rgba(0,0,0,0.14)] hover:bg-[#8d493e]/24",
-  ghost: "border-[#c6a171]/22 bg-white/[0.035] text-[#efe4d4]/82 hover:border-[#d6b17d]/48 hover:bg-[#6d4c34]/16"
+  primary: "border-[#2f8178]/20 bg-[#2f8178] text-white shadow-[0_12px_28px_rgba(47,129,120,0.18)] hover:bg-[#156a63]",
+  secondary: "border-[#6d5a87]/22 bg-[#6d5a87]/10 text-[#2c2440] shadow-[0_12px_28px_rgba(31,42,51,0.08)] hover:bg-[#6d5a87]/16",
+  danger: "border-[#d66f61]/26 bg-[#d66f61]/12 text-[#8d332b] shadow-[0_12px_28px_rgba(31,42,51,0.08)] hover:bg-[#d66f61]/18",
+  ghost: "border-[#1f2a33]/10 bg-white/45 text-[#1f2a33]/78 hover:border-[#2f8178]/24 hover:bg-[#2f8178]/8"
 };
 
 export function NeonButton({
@@ -26,7 +26,7 @@ export function NeonButton({
       disabled={disabled}
       type={type}
       className={cx(
-        "inline-flex h-10 items-center justify-center gap-2 rounded border px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45",
+        "inline-flex h-10 items-center justify-center gap-2 rounded-full border px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45",
         variants[variant],
         className
       )}
