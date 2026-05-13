@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ArrowUpRight, Bot, CheckCircle2, ClipboardList, FileCheck2, FolderPlus, MessageSquare, TimerReset, type LucideIcon } from "lucide-react";
-import { GlassPanel } from "@/components/ui/GlassPanel";
 import { NeonButton } from "@/components/ui/NeonButton";
 import { StatusPulse } from "@/components/ui/StatusPulse";
 import { PROJECT_STATUS_LABELS } from "@/lib/constants";
@@ -16,168 +15,184 @@ function projectTone(status: string) {
 
 export default async function CommandCenterPage() {
   const projects = await getProjects();
+  const featured = projects[0];
   const active = projects.filter((project) => project.status !== "completed").length;
   const inReview = projects.filter((project) => project.status === "in_progress").length;
   const completed = projects.filter((project) => project.status === "completed").length;
   const metrics: Array<{ label: string; value: string | number; icon: LucideIcon; note: string }> = [
-    { label: "Open Projects", value: active, icon: ClipboardList, note: "Projects not yet completed" },
-    { label: "In Design", value: inReview, icon: TimerReset, note: "Active floor workflows" },
-    { label: "Completed", value: completed, icon: CheckCircle2, note: "Issued project packages" },
-    { label: "System", value: "Ready", icon: Bot, note: "Bot, jobs, AI routes online" }
+    { label: "Open", value: active, icon: ClipboardList, note: "projects in motion" },
+    { label: "Designing", value: inReview, icon: TimerReset, note: "active floor cycles" },
+    { label: "Issued", value: completed, icon: CheckCircle2, note: "completed packages" }
   ];
   const queue: Array<{ title: string; copy: string; icon: LucideIcon }> = [
-    { title: "Architect intake", copy: "Verify DM identity and floor sequence", icon: MessageSquare },
-    { title: "AI production", copy: "Analyze plan, ask questions, generate drawing", icon: Bot },
-    { title: "Engineering review", copy: "Approve, revise, or export package", icon: FileCheck2 }
+    { title: "Architect intake", copy: "Verification, floor order, and first PDF handoff.", icon: MessageSquare },
+    { title: "AI drafting", copy: "Plan analysis, clarifications, drawing generation.", icon: Bot },
+    { title: "Engineer issue", copy: "Review, revise, approve, and export package.", icon: FileCheck2 }
   ];
 
   return (
-    <div className="space-y-5">
-      <section className="flex flex-wrap items-end justify-between gap-4 border-b border-[#c6a171]/14 pb-5">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#c9b9a6]/54">Operations Dashboard</p>
-          <h1 className="mt-2 text-3xl font-semibold text-[#fffaf0]">Electrical Design Workbench</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#efe4d4]/66">
-            Track architect intake, floor submissions, AI design jobs, engineering approvals, and package exports from one task-focused view.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/project/new">
-            <NeonButton>
-              <FolderPlus className="h-4 w-4" />
-              Create project
-            </NeonButton>
-          </Link>
-          {projects[0] ? (
-            <Link href={`/project/${projects[0].id}`}>
-              <NeonButton variant="ghost">
-                Open latest
-                <ArrowUpRight className="h-4 w-4" />
-              </NeonButton>
-            </Link>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="grid gap-3 md:grid-cols-4">
-        {metrics.map(({ label, value, icon: Icon, note }) => (
-          <GlassPanel key={label} className="p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#c9b9a6]/48">{label}</p>
-                <p className="mt-3 text-3xl font-semibold text-[#fffaf0]">{value}</p>
-                <p className="mt-1 text-sm text-[#efe4d4]/56">{note}</p>
-              </div>
-              <Icon className="h-5 w-5 text-[#d6b17d]/70" />
+    <div className="space-y-10">
+      <section className="grid min-h-[520px] gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="studio-surface studio-organic relative overflow-hidden p-8 sm:p-10">
+          <div className="absolute -right-14 top-12 h-52 w-52 rotate-12 rounded-[42%_58%_60%_40%] bg-[#2f8178]/10" />
+          <div className="absolute bottom-10 right-24 h-28 w-44 -rotate-6 rounded-[60%_40%_35%_65%] bg-[#d66f61]/12" />
+          <div className="relative max-w-3xl">
+            <p className="studio-eyebrow">Elec Nova Tech AI</p>
+            <h1 className="studio-title mt-5">Electrical design, composed like a studio workflow.</h1>
+            <p className="mt-6 max-w-2xl text-base leading-7 text-[#1f2a33]/62">
+              A calmer workspace for architectural intake, AI-assisted electrical drafting, engineering review, and drawing issue. The interface now emphasizes the work, not the machinery.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href="/project/new">
+                <NeonButton>
+                  <FolderPlus className="h-4 w-4" />
+                  Start assignment
+                </NeonButton>
+              </Link>
+              {featured ? (
+                <Link href={`/project/${featured.id}`}>
+                  <NeonButton variant="ghost">
+                    Continue latest
+                    <ArrowUpRight className="h-4 w-4" />
+                  </NeonButton>
+                </Link>
+              ) : null}
             </div>
-          </GlassPanel>
-        ))}
+          </div>
+        </div>
+
+        <div className="grid gap-4">
+          <div className="studio-surface rounded-[18px_34px_14px_30px] p-6">
+            <p className="studio-eyebrow">Studio Signals</p>
+            <div className="mt-5 grid grid-cols-3 gap-3">
+              {metrics.map(({ label, value, icon: Icon, note }) => (
+                <div key={label} className="rounded-[20px_8px_18px_12px] bg-white/60 p-4">
+                  <Icon className="h-5 w-5 text-[#2f8178]" />
+                  <p className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-[#1f2a33]">{value}</p>
+                  <p className="mt-1 text-sm font-semibold text-[#1f2a33]">{label}</p>
+                  <p className="mt-1 text-xs text-[#1f2a33]/48">{note}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="studio-surface rounded-[32px_12px_26px_16px] p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="studio-eyebrow">Current Brief</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[#1f2a33]">{featured?.project_name ?? "No active project"}</h2>
+              </div>
+              {featured ? <StatusPulse tone={projectTone(featured.status)} /> : null}
+            </div>
+            {featured ? (
+              <div className="mt-6 space-y-4">
+                <div className="h-2 overflow-hidden rounded-full bg-[#1f2a33]/8">
+                  <div
+                    className="h-full rounded-full bg-[#2f8178]"
+                    style={{ width: featured.total_floors ? `${(Math.min(featured.total_floors, featured.current_floor + 1) / featured.total_floors) * 100}%` : "12%" }}
+                  />
+                </div>
+                <div className="flex items-end justify-between gap-4">
+                  <div>
+                    <p className="text-sm text-[#1f2a33]/56">{featured.architect_name}</p>
+                    <p className="text-xs text-[#1f2a33]/44">{PROJECT_STATUS_LABELS[featured.status]} - {formatDateTime(featured.updated_at)}</p>
+                  </div>
+                  <Link href={`/project/${featured.id}`} className="text-sm font-semibold text-[#2f8178] hover:text-[#156a63]">
+                    Review
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-6 text-sm leading-6 text-[#1f2a33]/56">Create the first assignment to open the studio board.</p>
+            )}
+          </div>
+        </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <GlassPanel className="p-0">
-          <div className="flex items-center justify-between gap-4 border-b border-[#c6a171]/14 px-5 py-4">
+      <section className="grid gap-6 xl:grid-cols-[1fr_360px]">
+        <div>
+          <div className="mb-4 flex items-end justify-between gap-4">
             <div>
-              <p className="text-lg font-semibold text-[#fffaf0]">Project Register</p>
-              <p className="text-sm text-[#efe4d4]/54">Prioritized by most recent activity</p>
+              <p className="studio-eyebrow">Project Wall</p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[#1f2a33]">Assignments</h2>
             </div>
             <Link href="/project/new">
-              <NeonButton variant="ghost" className="h-9">
+              <NeonButton variant="ghost">
                 <FolderPlus className="h-4 w-4" />
                 Add
               </NeonButton>
             </Link>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[780px] border-collapse text-left">
-              <thead>
-                <tr className="border-b border-[#c6a171]/12 text-xs uppercase tracking-[0.1em] text-[#c9b9a6]/50">
-                  <th className="px-5 py-3 font-semibold">Project</th>
-                  <th className="px-5 py-3 font-semibold">Architect</th>
-                  <th className="px-5 py-3 font-semibold">Stage</th>
-                  <th className="px-5 py-3 font-semibold">Floor Progress</th>
-                  <th className="px-5 py-3 font-semibold">Updated</th>
-                  <th className="px-5 py-3 font-semibold" />
-                </tr>
-              </thead>
-              <tbody>
-                {projects.map((project) => {
-                  const total = project.total_floors ?? 0;
-                  const current = total ? Math.min(total, project.current_floor + 1) : 0;
-                  return (
-                    <tr key={project.id} className="border-b border-[#c6a171]/10 transition hover:bg-white/[0.035]">
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <StatusPulse tone={projectTone(project.status)} />
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-[#fffaf0]">{project.project_name}</p>
-                            <p className="text-xs text-[#c9b9a6]/54">{project.building_purpose ?? "Purpose pending"}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-sm text-[#efe4d4]/72">
-                        <p>{project.architect_name}</p>
-                        <p className="text-xs text-[#c9b9a6]/52">@{project.architect_telegram_username}</p>
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="rounded border border-[#c6a171]/22 bg-white/[0.025] px-2 py-1 text-xs text-[#efe4d4]/76">{PROJECT_STATUS_LABELS[project.status]}</span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="h-1.5 w-40 rounded bg-white/8">
-                          <div className="h-full rounded bg-[#b89162]" style={{ width: total ? `${(current / total) * 100}%` : "8%" }} />
-                        </div>
-                        <p className="mt-2 text-xs text-[#c9b9a6]/52">
-                          {current}/{total || "?"} floors
-                        </p>
-                      </td>
-                      <td className="px-5 py-4 text-sm text-[#efe4d4]/62">{formatDateTime(project.updated_at)}</td>
-                      <td className="px-5 py-4 text-right">
-                        <Link href={`/project/${project.id}`} className="inline-flex items-center gap-1 text-sm font-semibold text-[#d6b17d] hover:text-[#fffaf0]">
-                          Review
-                          <ArrowUpRight className="h-4 w-4" />
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </GlassPanel>
-
-        <div className="space-y-5">
-          <GlassPanel>
-            <p className="text-lg font-semibold text-[#fffaf0]">Operations Queue</p>
-            <div className="mt-4 space-y-3">
-              {queue.map(({ title, copy, icon: Icon }, index) => (
-                <div key={title} className="flex gap-3 rounded border border-[#c6a171]/14 bg-white/[0.025] p-3">
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded border border-[#d6b17d]/24 bg-[#6d4c34]/14 text-sm text-[#d6b17d]">{index + 1}</div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <Icon className="h-4 w-4 text-[#d6b17d]/72" />
-                      <p className="font-semibold text-[#fffaf0]">{title}</p>
+          <div className="grid gap-4 md:grid-cols-2">
+            {projects.map((project, index) => {
+              const total = project.total_floors ?? 0;
+              const current = total ? Math.min(total, project.current_floor + 1) : 0;
+              return (
+                <Link
+                  key={project.id}
+                  href={`/project/${project.id}`}
+                  className="studio-surface group overflow-hidden p-5 transition hover:-translate-y-1 hover:shadow-[0_26px_70px_rgba(31,42,51,0.12)]"
+                  style={{ borderRadius: index % 2 === 0 ? "30px 12px 24px 14px" : "14px 30px 16px 26px" }}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1f2a33]/42">{project.building_purpose ?? "Design brief"}</p>
+                      <h3 className="mt-3 truncate text-2xl font-semibold tracking-[-0.03em] text-[#1f2a33]">{project.project_name}</h3>
                     </div>
-                    <p className="mt-1 text-sm leading-5 text-[#efe4d4]/58">{copy}</p>
+                    <StatusPulse tone={projectTone(project.status)} />
+                  </div>
+                  <div className="mt-7 flex items-end justify-between gap-4">
+                    <div>
+                      <p className="text-sm text-[#1f2a33]/58">{project.architect_name}</p>
+                      <p className="text-xs text-[#1f2a33]/42">@{project.architect_telegram_username}</p>
+                    </div>
+                    <span className="studio-pill px-3 py-1 text-xs text-[#1f2a33]/64">{PROJECT_STATUS_LABELS[project.status]}</span>
+                  </div>
+                  <div className="mt-5 h-1.5 rounded-full bg-[#1f2a33]/8">
+                    <div className="h-full rounded-full bg-[#6d5a87]" style={{ width: total ? `${(current / total) * 100}%` : "10%" }} />
+                  </div>
+                  <p className="mt-3 text-xs text-[#1f2a33]/44">
+                    Floor {current}/{total || "?"} - {formatDateTime(project.updated_at)}
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        <aside className="space-y-4">
+          <div className="studio-surface rounded-[34px_12px_28px_18px] p-6">
+            <p className="studio-eyebrow">Workflow</p>
+            <div className="mt-5 space-y-4">
+              {queue.map(({ title, copy, icon: Icon }, index) => (
+                <div key={title} className="flex gap-3">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#2f8178]/10 text-sm font-semibold text-[#2f8178]">{index + 1}</div>
+                  <div className="min-w-0 border-b border-[#1f2a33]/8 pb-4">
+                    <div className="flex items-center gap-2">
+                      <Icon className="h-4 w-4 text-[#6d5a87]" />
+                      <p className="font-semibold text-[#1f2a33]">{title}</p>
+                    </div>
+                    <p className="mt-1 text-sm leading-5 text-[#1f2a33]/56">{copy}</p>
                   </div>
                 </div>
               ))}
             </div>
-          </GlassPanel>
+          </div>
 
-          <GlassPanel>
-            <p className="text-lg font-semibold text-[#fffaf0]">Recent Activity</p>
-            <div className="mt-4 space-y-4">
+          <div className="studio-surface rounded-[16px_34px_14px_28px] p-6">
+            <p className="studio-eyebrow">Recent Movement</p>
+            <div className="mt-5 space-y-4">
               {projects.slice(0, 5).map((project) => (
-                <div key={project.id} className="border-l border-[#c6a171]/28 pl-4">
-                  <p className="text-sm font-semibold text-[#fffaf0]">{project.project_name}</p>
-                  <p className="mt-1 text-xs text-[#c9b9a6]/56">
+                <div key={project.id} className="border-l-2 border-[#d66f61]/40 pl-4">
+                  <p className="text-sm font-semibold text-[#1f2a33]">{project.project_name}</p>
+                  <p className="mt-1 text-xs text-[#1f2a33]/48">
                     {PROJECT_STATUS_LABELS[project.status]} - {formatDateTime(project.updated_at)}
                   </p>
                 </div>
               ))}
             </div>
-          </GlassPanel>
-        </div>
+          </div>
+        </aside>
       </section>
     </div>
   );

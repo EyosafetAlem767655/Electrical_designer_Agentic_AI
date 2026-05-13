@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { CircuitBackground } from "@/components/three/CircuitBackground";
 import { RealtimeRefresher } from "@/components/ui/RealtimeRefresher";
 
 export const metadata: Metadata = {
@@ -14,7 +13,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body>
-        <CircuitBackground />
+        <div className="studio-backdrop fixed inset-0 -z-20" />
         <div className="grid-overlay fixed inset-0 -z-10 opacity-80" />
         <div className="relative z-10 flex min-h-screen">
           <Sidebar />
