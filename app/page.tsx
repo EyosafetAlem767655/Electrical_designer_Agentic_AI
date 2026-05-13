@@ -47,10 +47,10 @@ export default async function CommandCenterPage() {
               </div>
             </div>
             <div className="grid min-w-72 place-items-center">
-              <div className="relative h-52 w-52 rounded-full border border-cyan-300/20 bg-cyan-300/5 shadow-[0_0_70px_rgba(0,240,255,0.12)]">
-                <div className="absolute inset-8 rounded-full border border-lime-200/30" />
-                <div className="absolute inset-16 grid place-items-center rounded-full border border-cyan-200/50 bg-[#071018]">
-                  <Zap className="h-12 w-12 text-cyan-100" />
+              <div className="relative h-52 w-52 rounded-full border border-[#c6a171]/22 bg-[#6d4c34]/8 shadow-[0_28px_80px_rgba(0,0,0,0.22)]">
+                <div className="absolute inset-8 rounded-full border border-[#d6b17d]/24" />
+                <div className="absolute inset-16 grid place-items-center rounded-full border border-[#d6b17d]/42 bg-[#211812]">
+                  <Zap className="h-12 w-12 text-[#e7d3b8]" />
                 </div>
               </div>
             </div>
@@ -111,7 +111,7 @@ export default async function CommandCenterPage() {
                     <span className="rounded border border-cyan-300/20 px-2 py-1 text-xs text-cyan-50/70">{PROJECT_STATUS_LABELS[project.status]}</span>
                   </div>
                   <div className="mt-4 h-2 rounded bg-white/8">
-                    <div className="h-full rounded bg-cyan-300 shadow-[0_0_18px_rgba(0,240,255,0.45)]" style={{ width: total ? `${(current / total) * 100}%` : "10%" }} />
+                    <div className="h-full rounded bg-[#b89162] shadow-[0_8px_18px_rgba(0,0,0,0.2)]" style={{ width: total ? `${(current / total) * 100}%` : "10%" }} />
                   </div>
                   <p className="mono-font mt-2 text-xs text-cyan-100/50">
                     Floor {current}/{total || "?"} · Updated {formatDateTime(project.updated_at)}

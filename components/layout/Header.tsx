@@ -4,11 +4,11 @@ import { StatusPulse } from "@/components/ui/StatusPulse";
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-30 border-b border-cyan-300/15 bg-[#07070b]/74 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 border-b border-[#c6a171]/18 bg-[#1b130f]/86 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4">
         <Link href="/" className="flex min-w-0 items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded border border-cyan-300/50 bg-cyan-300/10 shadow-[0_0_24px_rgba(0,240,255,0.18)]">
-            <Cpu className="h-5 w-5 text-cyan-200" />
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded border border-[#d6b17d]/40 bg-[#6d4c34]/20 shadow-[0_14px_30px_rgba(0,0,0,0.22)]">
+            <Cpu className="h-5 w-5 text-[#e7d3b8]" />
           </div>
           <div className="min-w-0">
             <p className="tech-font truncate text-base font-semibold text-white">Elec Nova Tech AI</p>
@@ -16,12 +16,12 @@ export function Header() {
           </div>
         </Link>
         <div className="hidden items-center gap-3 md:flex">
-          <div className="flex items-center gap-2 rounded border border-cyan-300/20 bg-white/[0.03] px-3 py-2">
+          <div className="flex items-center gap-2 rounded border border-[#c6a171]/20 bg-white/[0.035] px-3 py-2">
             <StatusPulse tone="green" />
             <Bot className="h-4 w-4 text-cyan-100/70" />
             <span className="mono-font text-xs text-cyan-50/72">Bot standby</span>
           </div>
-          <div className="flex items-center gap-2 rounded border border-cyan-300/20 bg-white/[0.03] px-3 py-2">
+          <div className="flex items-center gap-2 rounded border border-[#c6a171]/20 bg-white/[0.035] px-3 py-2">
             <StatusPulse tone="blue" />
             <Activity className="h-4 w-4 text-cyan-100/70" />
             <span className="mono-font text-xs text-cyan-50/72">Realtime enabled</span>

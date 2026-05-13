@@ -44,13 +44,13 @@ export function NewProjectForm() {
             name={name}
             required={["projectName", "architectName", "architectTelegramUsername"].includes(name)}
             placeholder={placeholder}
-            className="mt-2 h-11 w-full rounded border border-cyan-300/18 bg-black/28 px-3 text-white outline-none transition placeholder:text-cyan-100/28 focus:border-cyan-200/60"
+            className="mt-2 h-11 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58"
           />
         </label>
       ))}
       <label className="block">
         <span className="mono-font text-xs text-cyan-100/62">Building purpose</span>
-        <select name="buildingPurpose" className="mt-2 h-11 w-full rounded border border-cyan-300/18 bg-[#071018] px-3 text-white outline-none transition focus:border-cyan-200/60">
+        <select name="buildingPurpose" className="mt-2 h-11 w-full rounded border border-[#c6a171]/20 bg-[#140f0c] px-3 text-[#f7f2ea] outline-none transition focus:border-[#d6b17d]/58">
           <option>Residential</option>
           <option>Commercial</option>
           <option>Mixed-use</option>
@@ -62,7 +62,7 @@ export function NewProjectForm() {
       </label>
       <label className="block">
         <span className="mono-font text-xs text-cyan-100/62">Notes</span>
-        <textarea name="notes" className="mt-2 min-h-24 w-full rounded border border-cyan-300/18 bg-black/28 px-3 py-2 text-white outline-none transition placeholder:text-cyan-100/28 focus:border-cyan-200/60" placeholder="Optional admin notes" />
+        <textarea name="notes" className="mt-2 min-h-24 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 py-2 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58" placeholder="Optional admin notes" />
       </label>
       {error ? <p className="rounded border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">{error}</p> : null}
       <NeonButton type="submit" disabled={busy}>

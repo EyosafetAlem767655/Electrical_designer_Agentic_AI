@@ -61,7 +61,7 @@ export function ProjectActions({ projectId, floor, design }: { projectId: string
         <textarea
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
-          className="mt-2 min-h-24 w-full rounded border border-cyan-300/18 bg-black/28 px-3 py-2 text-sm text-white outline-none transition placeholder:text-cyan-100/30 focus:border-cyan-200/60"
+          className="mt-2 min-h-24 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 py-2 text-sm text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58"
           placeholder="Describe the improvement Grok should make..."
         />
       </label>

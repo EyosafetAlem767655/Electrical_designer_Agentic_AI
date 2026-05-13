@@ -22,12 +22,12 @@ export const FLOOR_STATUS_LABELS: Record<FloorStatus, string> = {
 };
 
 export const DEFAULT_SYMBOL_LEGEND: SymbolLegendItem[] = [
-  { symbol: "DB", label: "Distribution Board", color: "#00f0ff", description: "Floor distribution board" },
-  { symbol: "L", label: "Lighting Circuit", color: "#e8ff00", description: "Switched lighting circuit" },
-  { symbol: "P", label: "Power Outlet", color: "#39a7ff", description: "General power socket circuit" },
-  { symbol: "E", label: "Emergency", color: "#ff3366", description: "Emergency light or exit system" },
-  { symbol: "D", label: "Data/Telecom", color: "#00ff88", description: "Data, telecom, intercom, or CCTV point" },
-  { symbol: "FA", label: "Fire Alarm", color: "#ff9f1c", description: "Smoke detector or manual call point" }
+  { symbol: "DB", label: "Distribution Board", color: "#b89162", description: "Floor distribution board" },
+  { symbol: "L", label: "Lighting Circuit", color: "#d6b17d", description: "Switched lighting circuit" },
+  { symbol: "P", label: "Power Outlet", color: "#8f877b", description: "General power socket circuit" },
+  { symbol: "E", label: "Emergency", color: "#b26457", description: "Emergency light or exit system" },
+  { symbol: "D", label: "Data/Telecom", color: "#8fa37c", description: "Data, telecom, intercom, or CCTV point" },
+  { symbol: "FA", label: "Fire Alarm", color: "#c9854c", description: "Smoke detector or manual call point" }
 ];
 
 export const ELECTRICAL_SYSTEM_PROMPT = `You are an expert electrical installation engineer specializing in Ethiopian building standards (EBCS - Ethiopian Building Code Standards). You design electrical systems for buildings including power distribution, lighting, socket outlet placement, distribution board sizing, circuit design, emergency lighting, fire alarm, earthing, and low-current systems.

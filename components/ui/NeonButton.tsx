@@ -6,10 +6,10 @@ import { cx } from "@/lib/utils";
 type Variant = "primary" | "secondary" | "danger" | "ghost";
 
 const variants: Record<Variant, string> = {
-  primary: "border-cyan-200/60 bg-cyan-300/12 text-cyan-50 shadow-[0_0_22px_rgba(0,240,255,0.14)] hover:bg-cyan-300/20",
-  secondary: "border-lime-200/50 bg-lime-300/10 text-lime-50 shadow-[0_0_20px_rgba(232,255,0,0.10)] hover:bg-lime-300/18",
-  danger: "border-rose-300/50 bg-rose-400/10 text-rose-50 shadow-[0_0_20px_rgba(255,51,102,0.12)] hover:bg-rose-400/18",
-  ghost: "border-cyan-300/18 bg-white/[0.03] text-cyan-50/80 hover:border-cyan-200/42 hover:bg-cyan-300/8"
+  primary: "border-[#d6b17d]/60 bg-[#6d4c34]/28 text-[#fffaf0] shadow-[0_14px_30px_rgba(0,0,0,0.18)] hover:bg-[#7c573c]/34",
+  secondary: "border-[#c2a177]/48 bg-[#f7f2ea]/8 text-[#f7f2ea] shadow-[0_14px_30px_rgba(0,0,0,0.14)] hover:bg-[#f7f2ea]/12",
+  danger: "border-[#b26457]/50 bg-[#7c3f35]/18 text-[#f6dfd9] shadow-[0_14px_30px_rgba(0,0,0,0.14)] hover:bg-[#8d493e]/24",
+  ghost: "border-[#c6a171]/22 bg-white/[0.035] text-[#efe4d4]/82 hover:border-[#d6b17d]/48 hover:bg-[#6d4c34]/16"
 };
 
 export function NeonButton({

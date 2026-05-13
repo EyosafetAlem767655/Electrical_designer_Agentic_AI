@@ -46,7 +46,7 @@ export function ChatInterface({ projectId }: { projectId: string }) {
         <input
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          className="h-11 min-w-0 flex-1 rounded border border-cyan-300/20 bg-black/30 px-3 text-white outline-none focus:border-cyan-200/60"
+          className="h-11 min-w-0 flex-1 rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 text-[#f7f2ea] outline-none focus:border-[#d6b17d]/58"
           placeholder="Ask about the current design..."
         />
         <NeonButton type="submit" disabled={busy}>

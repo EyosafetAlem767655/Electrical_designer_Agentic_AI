@@ -1,11 +1,11 @@
 import { cx } from "@/lib/utils";
 
 const tones = {
-  green: "bg-emerald-300 shadow-[0_0_14px_rgba(0,255,136,0.75)]",
-  yellow: "bg-lime-200 shadow-[0_0_14px_rgba(232,255,0,0.75)]",
-  blue: "bg-cyan-300 shadow-[0_0_14px_rgba(0,240,255,0.75)]",
-  red: "bg-rose-400 shadow-[0_0_14px_rgba(255,51,102,0.75)]",
-  gray: "bg-slate-400 shadow-[0_0_12px_rgba(148,163,184,0.42)]"
+  green: "bg-[#8fa37c] shadow-[0_0_12px_rgba(143,163,124,0.48)]",
+  yellow: "bg-[#d6b17d] shadow-[0_0_12px_rgba(214,177,125,0.48)]",
+  blue: "bg-[#b89162] shadow-[0_0_12px_rgba(184,145,98,0.46)]",
+  red: "bg-[#b26457] shadow-[0_0_12px_rgba(178,100,87,0.46)]",
+  gray: "bg-[#8a7d70] shadow-[0_0_10px_rgba(138,125,112,0.32)]"
 };
 
 export function StatusPulse({ tone = "blue" }: { tone?: keyof typeof tones }) {
