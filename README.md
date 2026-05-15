@@ -10,7 +10,7 @@ Agentic electrical design dashboard and Telegram intake system for floor-by-floo
 4. Apply `supabase/migrations/001_initial_schema.sql` in Supabase SQL editor.
 5. Create a Supabase Storage bucket named `project-files`.
 6. Enable Supabase Realtime on `projects`, `floors`, and `designs`.
-7. Set `JOB_SECRET` and `CRON_SECRET` to the same strong value in production so Vercel Cron can process queued jobs.
+7. Set `JOB_SECRET` and `CRON_SECRET` to the same strong value in production. The app triggers queued jobs when they are created, and the Hobby-compatible daily cron is only a fallback.
 8. Run `npm.cmd run dev`.
 
 ## Webhook
