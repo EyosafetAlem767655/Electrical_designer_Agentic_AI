@@ -28,7 +28,7 @@ describe("environment URL helpers", () => {
   });
 
   it("derives request origin from forwarded Vercel headers", () => {
-    delete process.env.TELEGRAM_WEBHOOK_BASE_URL;
+    process.env.TELEGRAM_WEBHOOK_BASE_URL = "https://stale-env.example.com";
     const request = new Request("http://internal.local/api/telegram/setup", {
       headers: {
         "x-forwarded-host": "elec-nova.vercel.app",

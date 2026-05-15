@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, Bot, Building2, FileText, Link2, MessageSquare, MoveUpRight, Send, Sparkles } from "lucide-react";
+import { DeleteProjectButton } from "@/components/ui/DeleteProjectButton";
 import { DesignViewer } from "@/components/ui/DesignViewer";
 import { FloorTimeline } from "@/components/ui/FloorTimeline";
 import { GlassPanel } from "@/components/ui/GlassPanel";
@@ -53,6 +54,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                     </NeonButton>
                   </Link>
                 ) : null}
+                <DeleteProjectButton projectId={id} projectName={bundle.project.project_name} />
               </div>
             </div>
           </div>

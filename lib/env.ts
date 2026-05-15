@@ -31,14 +31,6 @@ export function getBaseUrl() {
 }
 
 export function getRequestBaseUrl(request: Request) {
-  const configuredUrl =
-    getEnv("TELEGRAM_WEBHOOK_BASE_URL") ??
-    getEnv("Installer_webhook_base_URL") ??
-    getEnv("INSTALLER_WEBHOOK_BASE_URL") ??
-    getEnv("ORCHESTRATOR_URL") ??
-    getEnv("NEXT_PUBLIC_APP_URL");
-  if (configuredUrl) return normalizeBaseUrl(configuredUrl);
-
   const forwardedHost = request.headers.get("x-forwarded-host");
   const host = forwardedHost ?? request.headers.get("host");
   if (host) {

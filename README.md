@@ -32,6 +32,8 @@ This drops and recreates only the app tables: `projects`, `floors`, `designs`, `
 
 After running it, open Supabase API settings and reload the schema cache if needed, then redeploy or retry project creation.
 
+To remove all project data while keeping the schema, run `supabase/purge_app_data.sql` in the Supabase SQL editor.
+
 ## Webhook
 
 You can register and inspect the Telegram webhook from the dashboard at `/telegram`.

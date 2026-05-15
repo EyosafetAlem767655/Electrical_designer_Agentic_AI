@@ -7,6 +7,8 @@ import { PROJECT_STATUS_LABELS } from "@/lib/constants";
 import { getProjects } from "@/lib/data";
 import { formatDateTime } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 function projectTone(status: string) {
   if (status === "completed") return "green" as const;
   if (status === "in_progress") return "blue" as const;
