@@ -362,23 +362,23 @@ select {
 }
 
 [class*="text-cyan-"] {
-  color: rgba(31, 42, 51, 0.64) !important;
+  color: rgba(232, 242, 242, 0.84) !important;
 }
 
 [class*="text-lime-"] {
-  color: rgba(47, 129, 120, 0.78) !important;
+  color: rgba(94, 234, 212, 0.9) !important;
 }
 
 [class*="text-blue-"] {
-  color: rgba(97, 120, 143, 0.78) !important;
+  color: rgba(147, 197, 253, 0.86) !important;
 }
 
 [class*="text-emerald-"] {
-  color: rgba(109, 138, 102, 0.86) !important;
+  color: rgba(103, 232, 165, 0.88) !important;
 }
 
 [class*="text-rose-"] {
-  color: rgba(201, 95, 85, 0.9) !important;
+  color: rgba(251, 113, 133, 0.9) !important;
 }
 
 [class*="text-[#fffaf0]"],
@@ -390,7 +390,7 @@ select {
 
 [class*="text-[#c9b9a6]"],
 [class*="text-[#e7d3b8]"] {
-  color: rgba(232, 242, 242, 0.62) !important;
+  color: rgba(232, 242, 242, 0.74) !important;
 }
 
 [class*="text-[#d6b17d]"] {
@@ -402,23 +402,62 @@ select {
 }
 
 [class*="text-[#1f2a33]"] {
-  color: #e8f2f2 !important;
+  color: rgba(232, 242, 242, 0.92) !important;
 }
 
 [class*="text-[#687580]"] {
-  color: rgba(232, 242, 242, 0.62) !important;
+  color: rgba(232, 242, 242, 0.72) !important;
+}
+
+[class*="text-[#1f2a33]/42"],
+[class*="text-[#1f2a33]/44"],
+[class*="text-[#1f2a33]/48"],
+[class*="text-[#1f2a33]/52"],
+[class*="text-[#1f2a33]/56"],
+[class*="text-[#1f2a33]/58"],
+[class*="text-[#1f2a33]/62"],
+[class*="text-[#1f2a33]/64"],
+[class*="text-[#687580]/70"],
+[class*="text-[#c9b9a6]/46"],
+[class*="text-[#c9b9a6]/48"],
+[class*="text-[#c9b9a6]/54"],
+[class*="text-[#c9b9a6]/55"],
+[class*="text-[#c9b9a6]/56"],
+[class*="text-[#c9b9a6]/58"],
+[class*="text-[#c9b9a6]/62"],
+[class*="text-[#efe4d4]/54"],
+[class*="text-[#efe4d4]/56"],
+[class*="text-[#efe4d4]/58"],
+[class*="text-[#efe4d4]/62"],
+[class*="text-[#efe4d4]/64"],
+[class*="text-[#efe4d4]/66"],
+[class*="text-[#efe4d4]/68"],
+[class*="text-cyan-100/55"],
+[class*="text-cyan-100/58"],
+[class*="text-cyan-100/60"],
+[class*="text-cyan-100/62"],
+[class*="text-cyan-50/64"],
+[class*="text-cyan-50/65"],
+[class*="text-cyan-50/72"] {
+  color: rgba(232, 242, 242, 0.76) !important;
+}
+
+[class*="text-[#1f2a33]/78"],
+[class*="text-[#1f2a33]/72"],
+[class*="text-[#1f2a33]/68"] {
+  color: rgba(232, 242, 242, 0.86) !important;
 }
 
 [class*="border-cyan-"],
 [class*="border-lime-"],
 [class*="border-blue-"] {
-  border-color: rgba(31, 42, 51, 0.12) !important;
+  border-color: rgba(148, 210, 204, 0.18) !important;
 }
 
 [class*="border-[#c6a171]"],
 [class*="border-[#d6b17d]"],
 [class*="border-[#c2a177]"] {
-  border-color: rgba(31, 42, 51, 0.12) !important;
+  border-color: rgba(148, 210, 204, 0.18) !important;
 }
 
 [class*="border-emerald-"] {
