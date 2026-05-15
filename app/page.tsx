@@ -35,7 +35,8 @@ export default async function CommandCenterPage() {
     <div className="space-y-10">
       <section className="grid min-h-[520px] gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="studio-surface studio-organic relative overflow-hidden p-8 sm:p-10">
-          <StudioSticker kind="drafting" className="absolute -right-4 bottom-4 hidden opacity-95 lg:block" />
+          <StudioSticker kind="drafting" className="absolute -right-8 bottom-0 hidden w-72 opacity-95 lg:block" />
+          <StudioSticker kind="handoff" className="absolute right-44 top-8 hidden w-36 opacity-80 xl:block" />
           <div className="relative max-w-3xl">
             <p className="studio-eyebrow">Elec Nova Tech AI</p>
             <h1 className="studio-title mt-5">Electrical design, composed like a studio workflow.</h1>
@@ -63,6 +64,7 @@ export default async function CommandCenterPage() {
 
         <div className="grid gap-4">
           <div className="studio-surface rounded-[18px_34px_14px_30px] p-6">
+            <StudioSticker kind="package" className="float-right -mr-5 -mt-7 w-32 opacity-90" />
             <p className="studio-eyebrow">Studio Signals</p>
             <div className="mt-5 grid grid-cols-3 gap-3">
               {metrics.map(({ label, value, icon: Icon, note }) => (
@@ -77,7 +79,7 @@ export default async function CommandCenterPage() {
           </div>
 
           <div className="studio-surface rounded-[32px_12px_26px_16px] p-6">
-            <StudioSticker kind="handoff" className="float-right -mr-2 -mt-2 w-28 opacity-90" />
+            <StudioSticker kind="handoff" className="float-right -mr-4 -mt-5 w-36 opacity-90" />
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="studio-eyebrow">Current Brief</p>
@@ -163,7 +165,7 @@ export default async function CommandCenterPage() {
 
         <aside className="space-y-4">
           <div className="studio-surface rounded-[34px_12px_28px_18px] p-6">
-            <StudioSticker kind="package" className="float-right -mr-3 -mt-4 w-28 opacity-85" />
+            <StudioSticker kind="drafting" className="float-right -mr-5 -mt-7 w-32 opacity-85" />
             <p className="studio-eyebrow">Workflow</p>
             <div className="mt-5 space-y-4">
               {queue.map(({ title, copy, icon: Icon }, index) => (
