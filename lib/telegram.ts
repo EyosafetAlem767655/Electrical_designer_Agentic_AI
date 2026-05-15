@@ -55,6 +55,15 @@ export async function getTelegramWebhookInfo() {
   return telegramApi<TelegramWebhookInfo>("getWebhookInfo");
 }
 
+export async function ensureTelegramWebhook(url: string) {
+  const info = await getTelegramWebhookInfo();
+  if (info.url === url) {
+    return { changed: false, webhook: info };
+  }
+  await setTelegramWebhook(url);
+  return { changed: true, webhook: await getTelegramWebhookInfo() };
+}
+
 export async function sendTelegramMessage(chatId: number | string, text: string) {
   return telegramApi<{ message_id: number }>("sendMessage", {
     chat_id: chatId,

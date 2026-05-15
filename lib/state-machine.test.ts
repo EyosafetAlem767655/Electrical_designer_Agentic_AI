@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseTelegramGroupInput } from "@/lib/utils";
-import { isPersonNameMatch, isProjectNameMatch, parseBindCommand, parseFloorNames, parsePositiveInteger, parseVerificationDetails } from "@/lib/state-machine";
+import { isPersonNameMatch, isProjectNameMatch, parseBindCommand, parseFloorNames, parsePositiveInteger, parseStartPayload, parseVerificationDetails } from "@/lib/state-machine";
 
 describe("state machine helpers", () => {
   it("matches project names case-insensitively with minor punctuation differences", () => {
@@ -30,6 +30,12 @@ describe("state machine helpers", () => {
     expect(parseBindCommand("/bind NOVA1234")).toBe("NOVA1234");
     expect(parseBindCommand("/bind@awolaibot nova_123")).toBe("NOVA_123");
     expect(parseBindCommand("/start")).toBe(null);
+  });
+
+  it("parses Telegram start payloads", () => {
+    expect(parseStartPayload("/start NOVA1234")).toBe("NOVA1234");
+    expect(parseStartPayload("/start@awolaibot project_id")).toBe("project_id");
+    expect(parseStartPayload("/start")).toBe(null);
   });
 
   it("parses architect verification details", () => {

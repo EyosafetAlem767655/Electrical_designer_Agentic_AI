@@ -5,6 +5,10 @@ import type { TelegramUpdate } from "@/lib/telegram";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+export async function GET() {
+  return NextResponse.json({ ok: true, route: "telegram-webhook", message: "Telegram webhook endpoint is alive. Telegram sends updates with POST." });
+}
+
 export async function POST(request: Request) {
   try {
     const update = (await request.json()) as TelegramUpdate;

@@ -8,11 +8,13 @@ import { NeonButton } from "@/components/ui/NeonButton";
 export function NewProjectForm() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(formData: FormData) {
     setBusy(true);
     setError(null);
+    setDetail(null);
     const payload = Object.fromEntries(formData.entries());
     const response = await fetch("/api/projects", {
       method: "POST",
@@ -23,7 +25,11 @@ export function NewProjectForm() {
     setBusy(false);
     if (!response.ok) {
       setError(result.error ?? "Project creation failed");
+      setDetail(result.details ?? result.hint ?? null);
       return;
+    }
+    if (result.warning) {
+      console.warn("Project created with warning:", result.warning);
     }
     router.push(`/project/${result.project.id}`);
   }
@@ -71,7 +77,12 @@ export function NewProjectForm() {
       <p className="rounded border border-[#c6a171]/14 bg-white/[0.025] px-3 py-2 text-sm leading-5 text-[#efe4d4]/64">
         After creation, open the project and send the bot start link to the architect. The bot will ask for their full name and project name, then continue only if they match this record.
       </p>
-      {error ? <p className="rounded border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">{error}</p> : null}
+      {error ? (
+        <div className="rounded border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
+          <p>{error}</p>
+          {detail ? <p className="mt-1 text-xs text-rose-100/70">{detail}</p> : null}
+        </div>
+      ) : null}
       <NeonButton type="submit" disabled={busy}>
         <Send className="h-4 w-4" />
         Create Project

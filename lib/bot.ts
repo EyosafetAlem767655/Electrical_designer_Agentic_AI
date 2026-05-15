@@ -1,6 +1,6 @@
 import { createJob, triggerJobProcessing } from "@/lib/jobs";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { isPersonNameMatch, isProjectNameMatch, parseBindCommand, parseFloorNames, parsePositiveInteger, parseVerificationDetails } from "@/lib/state-machine";
+import { isPersonNameMatch, isProjectNameMatch, parseBindCommand, parseFloorNames, parsePositiveInteger, parseStartPayload, parseVerificationDetails } from "@/lib/state-machine";
 import { sendProjectInvite, sendTelegramMessage, type TelegramMessage, type TelegramUpdate } from "@/lib/telegram";
 import { normalizeTelegramUsername } from "@/lib/utils";
 import type { BotSession, Floor, Project } from "@/types";
@@ -53,7 +53,7 @@ async function updateSession(sessionId: string, values: Partial<BotSession>) {
   return data as BotSession;
 }
 
-async function findProjectForVerification(fullName: string, projectName: string, username?: string | null) {
+async function findProjectForVerification(fullName: string, projectName: string, username?: string | null, projectHint?: string | null) {
   const supabase = getSupabaseAdmin();
   const normalizedUsername = username ? normalizeTelegramUsername(username) : null;
   let query = supabase.from("projects").select("*").in("status", ["created", "awaiting_verification", "verified", "in_progress"]);
@@ -61,11 +61,38 @@ async function findProjectForVerification(fullName: string, projectName: string,
   if (error) throw error;
   return (
     ((data ?? []) as Project[]).find((project) => {
-      const usernameMatches = !project.architect_telegram_username || !normalizedUsername || normalizeTelegramUsername(project.architect_telegram_username) === normalizedUsername;
-      return usernameMatches && isProjectNameMatch(projectName, project.project_name) && isPersonNameMatch(fullName, project.architect_name);
+      const storedUsername = project.architect_telegram_username ? normalizeTelegramUsername(project.architect_telegram_username) : "";
+      const usernameMatches = !storedUsername || storedUsername.startsWith("pending-") || !normalizedUsername || storedUsername === normalizedUsername;
+      const hintMatches = !projectHint || project.id === projectHint || project.project_code === projectHint;
+      return hintMatches && usernameMatches && isProjectNameMatch(projectName, project.project_name) && isPersonNameMatch(fullName, project.architect_name);
     }) ??
     null
   );
+}
+
+async function verifyProject(project: Project, message: TelegramMessage, session: BotSession) {
+  const supabase = getSupabaseAdmin();
+  const update = {
+    status: "verified",
+    telegram_chat_id: message.chat.id,
+    telegram_user_id: message.from?.id,
+    architect_telegram_username: session.telegram_username ?? project.architect_telegram_username
+  };
+
+  const { error } = await supabase.from("projects").update(update).eq("id", project.id);
+  if (!error) return;
+
+  const errorText = `${error.message ?? ""} ${error.details ?? ""}`;
+  if (!/telegram_user_id|schema cache|column/i.test(errorText)) throw error;
+  const { error: legacyError } = await supabase
+    .from("projects")
+    .update({
+      status: "verified",
+      telegram_chat_id: message.chat.id,
+      architect_telegram_username: session.telegram_username ?? project.architect_telegram_username
+    })
+    .eq("id", project.id);
+  if (legacyError) throw legacyError;
 }
 
 async function updateOutreachStatus(projectId: string, status: string) {
@@ -158,13 +185,14 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
 
   if (!session.project_id || session.state === "AWAITING_VERIFICATION") {
     if (!text || text.startsWith("/start")) {
+      const projectHint = text ? parseStartPayload(text) : null;
       await botReply(
         message.chat.id,
         null,
         null,
-        "Welcome! I'm the Elec Nova Tech electrical design assistant. To verify your identity, please send your full name and the project you work on like this:\nFull name: Your Name\nProject: Project Name"
+        `${projectHint ? "Project link received. " : ""}Welcome! I'm the Elec Nova Tech electrical design assistant. To verify your identity, please send your full name and the project you work on like this:\nFull name: Your Name\nProject: Project Name`
       );
-      await updateSession(session.id, { state: "AWAITING_VERIFICATION" });
+      await updateSession(session.id, { state: "AWAITING_VERIFICATION", data: projectHint ? { projectHint } : session.data });
       return { ok: true };
     }
 
@@ -174,21 +202,14 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
       return { ok: true };
     }
 
-    const project = await findProjectForVerification(details.fullName, details.projectName, session.telegram_username);
+    const projectHint = typeof session.data?.projectHint === "string" ? session.data.projectHint : null;
+    const project = await findProjectForVerification(details.fullName, details.projectName, session.telegram_username, projectHint);
     if (!project) {
       await botReply(message.chat.id, null, null, "I'm sorry, I could not verify that full name and project. Please check with your project admin and try again.");
       return { ok: true };
     }
 
-    await supabase
-      .from("projects")
-      .update({
-        status: "verified",
-        telegram_chat_id: message.chat.id,
-        telegram_user_id: message.from.id,
-        architect_telegram_username: session.telegram_username ?? project.architect_telegram_username
-      })
-      .eq("id", project.id);
+    await verifyProject(project, message, session);
     session = await updateSession(session.id, { project_id: project.id, state: "COLLECTING_PURPOSE", telegram_chat_id: message.chat.id });
     await botReply(message.chat.id, project.id, null, `Great! You're verified for project ${project.project_name}. What is the primary purpose of this building? For example: residential, commercial, mixed-use, industrial, hospital, hotel, or school.`);
     return { ok: true };

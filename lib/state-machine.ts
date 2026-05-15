@@ -72,6 +72,11 @@ export function parseBindCommand(text: string) {
   return match?.[1]?.toUpperCase() ?? null;
 }
 
+export function parseStartPayload(text: string) {
+  const match = text.trim().match(/^\/start(?:@\w+)?(?:\s+([A-Za-z0-9_-]+))?\s*$/i);
+  return match?.[1] ?? null;
+}
+
 export function stateLabel(state: BotState) {
   return state
     .split("_")

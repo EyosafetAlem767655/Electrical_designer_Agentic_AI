@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { makeProjectCode } from "@/lib/constants";
 import { getProjects } from "@/lib/data";
-import { getEnv } from "@/lib/env";
+import { getBaseUrl, getEnv } from "@/lib/env";
 import { getSupabaseAdmin, hasSupabaseServerEnv } from "@/lib/supabase";
-import { sendProjectInvite } from "@/lib/telegram";
+import { ensureTelegramWebhook, sendProjectInvite } from "@/lib/telegram";
 import { normalizeTelegramUsername, parseTelegramGroupInput } from "@/lib/utils";
 
 export const runtime = "nodejs";
@@ -43,23 +43,67 @@ type ProjectInsert = {
 };
 
 async function insertProject(supabase: ReturnType<typeof getSupabaseAdmin>, row: ProjectInsert) {
-  const insert = async (payload: ProjectInsert | Omit<ProjectInsert, "telegram_group_invite_link" | "telegram_outreach_status">) =>
+  const insert = async (payload: Record<string, unknown>) =>
     supabase.from("projects").insert(payload).select("*").single();
 
   const result = await insert(row);
   if (!result.error) return result;
 
   const message = `${result.error.message ?? ""} ${result.error.details ?? ""}`;
-  if (!/telegram_group_invite_link|telegram_outreach_status|schema cache|column/i.test(message)) {
+  if (!/project_code|building_address|notes|telegram_group_invite_link|telegram_outreach_status|schema cache|column/i.test(message)) {
     return result;
   }
 
   const { telegram_group_invite_link: _inviteLink, telegram_outreach_status: _outreachStatus, ...legacyRow } = row;
-  return insert(legacyRow);
+  const retry = await insert(legacyRow);
+  if (!retry.error) return retry;
+
+  const retryMessage = `${retry.error.message ?? ""} ${retry.error.details ?? ""}`;
+  if (!/project_code|building_address|notes|schema cache|column/i.test(retryMessage)) {
+    return retry;
+  }
+
+  return insert({
+    project_name: row.project_name,
+    architect_name: row.architect_name,
+    architect_telegram_username: row.architect_telegram_username,
+    company_name: row.company_name,
+    building_purpose: row.building_purpose,
+    status: row.status
+  });
 }
 
 async function updateOutreachStatus(supabase: ReturnType<typeof getSupabaseAdmin>, projectId: string, status: string) {
   await supabase.from("projects").update({ telegram_outreach_status: status }).eq("id", projectId);
+}
+
+function webhookUrl() {
+  return `${getBaseUrl().replace(/\/$/, "")}/api/telegram/webhook`;
+}
+
+async function ensureWebhookIfPossible() {
+  if (!getEnv("TELEGRAM_BOT_TOKEN")) {
+    return { ok: false, warning: "TELEGRAM_BOT_TOKEN is missing, so the bot webhook could not be registered." };
+  }
+  try {
+    return { ok: true, result: await ensureTelegramWebhook(webhookUrl()) };
+  } catch (error) {
+    return { ok: false, warning: error instanceof Error ? error.message : "Telegram webhook registration failed." };
+  }
+}
+
+function projectErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) return "Failed to create project";
+  if (/duplicate key|projects_project_name_key|unique/i.test(error.message)) {
+    return "A project with this name already exists. Use a different project name.";
+  }
+  if (/row-level security|permission denied|violates row-level security/i.test(error.message)) {
+    return "Supabase rejected the insert. Set SUPABASE_SERVICE_ROLE_KEY in Vercel or disable RLS for this prototype.";
+  }
+  if (/Could not find the .* column|schema cache|column/i.test(error.message)) {
+    return `${error.message}. Apply the Supabase migrations or use the original schema-compatible fields.`;
+  }
+  return error.message;
 }
 
 export async function GET() {
@@ -78,6 +122,7 @@ export async function POST(request: Request) {
     }
 
     const input = createProjectSchema.parse(await request.json());
+    const webhook = await ensureWebhookIfPossible();
     const supabase = getSupabaseAdmin();
     const parsedGroup = parseTelegramGroupInput(input.groupChatId);
     const telegramInviteLink = input.telegramGroupInviteLink?.trim() || parsedGroup.inviteLink;
@@ -115,14 +160,15 @@ export async function POST(request: Request) {
       {
         ok: true,
         project,
-        botStartLink: botStartLink(project.project_code),
-        bindCommand: `/bind ${project.project_code}`,
-        warning: warning ?? "Project created. Send the bot start link to the architect; the bot will verify full name and project name."
+        botStartLink: botStartLink(project.project_code ?? project.id),
+        bindCommand: `/bind ${project.project_code ?? project.id}`,
+        webhook,
+        warning: warning ?? webhook.warning ?? "Project created. Send the bot start link to the architect; the bot will verify full name and project name."
       },
       { status: 201 }
     );
   } catch (error) {
     console.error("Project creation failed", error);
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Failed to create project" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: projectErrorMessage(error) }, { status: 400 });
   }
 }
