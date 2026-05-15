@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createJob } from "@/lib/jobs";
+import { createJob, triggerJobProcessing } from "@/lib/jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +14,7 @@ export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
     const job = await createJob("analyze_floor", input);
+    void triggerJobProcessing();
     return NextResponse.json({ ok: true, job }, { status: 202 });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Analyze enqueue failed" }, { status: 400 });

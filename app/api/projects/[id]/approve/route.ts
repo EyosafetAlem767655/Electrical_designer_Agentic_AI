@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { createJob, triggerJobProcessing } from "@/lib/jobs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { sendTelegramMessage } from "@/lib/telegram";
 import type { Floor, Project } from "@/types";
@@ -46,6 +47,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     } else {
       await supabase.from("projects").update({ status: "completed" }).eq("id", projectId);
       await supabase.from("bot_sessions").update({ state: "COMPLETED" }).eq("project_id", projectId);
+      await createJob("pdf_compile", { projectId });
+      void triggerJobProcessing();
       if (project.telegram_chat_id) {
         const message = `All floor designs are complete! The full electrical design package for ${project.project_name} is being compiled. Thank you for your collaboration!`;
         await sendTelegramMessage(project.telegram_chat_id, message);

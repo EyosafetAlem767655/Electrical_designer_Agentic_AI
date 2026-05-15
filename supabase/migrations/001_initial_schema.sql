@@ -18,6 +18,10 @@ create table if not exists projects (
   telegram_chat_id bigint,
   telegram_user_id bigint,
   group_chat_id bigint,
+  telegram_group_invite_link text,
+  telegram_group_title text,
+  telegram_group_bound_at timestamptz,
+  telegram_outreach_status text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );

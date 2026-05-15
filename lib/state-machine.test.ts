@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isProjectNameMatch, parseFloorNames, parsePositiveInteger } from "@/lib/state-machine";
+import { parseTelegramGroupInput } from "@/lib/utils";
+import { isProjectNameMatch, parseBindCommand, parseFloorNames, parsePositiveInteger } from "@/lib/state-machine";
 
 describe("state machine helpers", () => {
   it("matches project names case-insensitively with minor punctuation differences", () => {
@@ -23,5 +24,20 @@ describe("state machine helpers", () => {
   it("parses bounded positive integers", () => {
     expect(parsePositiveInteger("8 floors")).toBe(8);
     expect(parsePositiveInteger("0")).toBe(null);
+  });
+
+  it("parses Telegram bind commands from groups", () => {
+    expect(parseBindCommand("/bind NOVA1234")).toBe("NOVA1234");
+    expect(parseBindCommand("/bind@awolaibot nova_123")).toBe("NOVA_123");
+    expect(parseBindCommand("/start")).toBe(null);
+  });
+
+  it("accepts invite links as metadata without treating them as chat IDs", () => {
+    expect(parseTelegramGroupInput("https://t.me/+QOZbcLvBzdVjNGQ0")).toEqual({
+      chatId: null,
+      inviteLink: "https://t.me/+QOZbcLvBzdVjNGQ0"
+    });
+    expect(parseTelegramGroupInput("-1001234567890")).toEqual({ chatId: -1001234567890, inviteLink: null });
+    expect(() => parseTelegramGroupInput("not-a-chat-id")).toThrow(/numeric/);
   });
 });

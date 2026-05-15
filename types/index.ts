@@ -50,6 +50,10 @@ export type Project = {
   telegram_chat_id: number | null;
   telegram_user_id: number | null;
   group_chat_id: number | null;
+  telegram_group_invite_link: string | null;
+  telegram_group_title: string | null;
+  telegram_group_bound_at: string | null;
+  telegram_outreach_status: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -145,4 +149,5 @@ export type ProjectBundle = {
   floors: Floor[];
   designs: Design[];
   conversations: Conversation[];
+  jobs: Job[];
 };

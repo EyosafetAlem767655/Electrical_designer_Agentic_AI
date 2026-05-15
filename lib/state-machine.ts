@@ -49,6 +49,11 @@ export function parseFloorNames(value: string, expectedCount: number) {
   return { ok: true as const, names };
 }
 
+export function parseBindCommand(text: string) {
+  const match = text.trim().match(/^\/bind(?:@\w+)?\s+([A-Za-z0-9_-]+)\s*$/i);
+  return match?.[1]?.toUpperCase() ?? null;
+}
+
 export function stateLabel(state: BotState) {
   return state
     .split("_")

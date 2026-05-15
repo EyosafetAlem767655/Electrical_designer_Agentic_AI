@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, FileDown, RotateCcw, Send } from "lucide-react";
+import { Check, FileDown, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { NeonButton } from "@/components/ui/NeonButton";
@@ -65,10 +65,6 @@ export function ProjectActions({ projectId, floor, design }: { projectId: string
           placeholder="Describe the improvement Grok should make..."
         />
       </label>
-      <NeonButton className="mt-3" variant="ghost" disabled={busy !== null} onClick={() => fetch("/api/jobs/process", { method: "POST" }).then(() => router.refresh())}>
-        <Send className="h-4 w-4" />
-        Process Next Job
-      </NeonButton>
     </div>
   );
 }

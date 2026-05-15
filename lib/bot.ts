@@ -1,7 +1,7 @@
-import { createJob } from "@/lib/jobs";
+import { createJob, triggerJobProcessing } from "@/lib/jobs";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { isProjectNameMatch, parseFloorNames, parsePositiveInteger } from "@/lib/state-machine";
-import { sendTelegramMessage, type TelegramMessage, type TelegramUpdate } from "@/lib/telegram";
+import { isProjectNameMatch, parseBindCommand, parseFloorNames, parsePositiveInteger } from "@/lib/state-machine";
+import { sendProjectInvite, sendTelegramMessage, type TelegramMessage, type TelegramUpdate } from "@/lib/telegram";
 import { normalizeTelegramUsername } from "@/lib/utils";
 import type { BotSession, Floor, Project } from "@/types";
 
@@ -65,6 +65,44 @@ async function findProjectForVerification(text: string, username?: string | null
   return ((data ?? []) as Project[]).find((project) => isProjectNameMatch(text, project.project_name)) ?? null;
 }
 
+async function handleGroupMessage(message: TelegramMessage) {
+  const text = message.text?.trim() ?? "";
+  const projectCode = parseBindCommand(text);
+  if (!projectCode) return { ok: true, ignored: "non-bind group message" };
+
+  const supabase = getSupabaseAdmin();
+  const { data: project, error } = await supabase.from("projects").select("*").ilike("project_code", projectCode).maybeSingle();
+  if (error) throw error;
+  if (!project) {
+    await sendTelegramMessage(message.chat.id, "I could not find a project for that bind code. Please copy the exact /bind command from the dashboard.");
+    return { ok: false, error: "project_not_found" };
+  }
+
+  await supabase
+    .from("projects")
+    .update({
+      group_chat_id: message.chat.id,
+      telegram_group_title: message.chat.title ?? null,
+      telegram_group_bound_at: new Date().toISOString(),
+      telegram_outreach_status: "bound",
+      status: project.status === "created" ? "awaiting_verification" : project.status
+    })
+    .eq("id", project.id);
+
+  await logMessage(project.id, null, "bot", `Telegram group bound: ${message.chat.title ?? message.chat.id}`, "command", message.message_id);
+  try {
+    await sendProjectInvite(message.chat.id, project.architect_telegram_username);
+    await supabase.from("projects").update({ telegram_outreach_status: "invite_sent" }).eq("id", project.id);
+  } catch (error) {
+    await supabase.from("projects").update({ telegram_outreach_status: "invite_failed" }).eq("id", project.id);
+    await sendTelegramMessage(message.chat.id, `Group bound for ${project.project_name}, but I could not send the architect invite: ${error instanceof Error ? error.message : "Telegram send failed"}`);
+    return { ok: false, error: "invite_failed" };
+  }
+
+  await logMessage(project.id, null, "bot", `Architect invite sent in Telegram group ${message.chat.title ?? message.chat.id}.`);
+  return { ok: true, bound: true, projectId: project.id };
+}
+
 async function createFloors(project: Project, names: string[]) {
   const supabase = getSupabaseAdmin();
   const rows = names.map((floor_name, floor_number) => ({ project_id: project.id, floor_name, floor_number }));
@@ -88,7 +126,7 @@ async function currentFloor(projectId: string, currentFloorIndex: number) {
 export async function handleTelegramUpdate(update: TelegramUpdate) {
   const message = update.message;
   if (!message || !message.from || message.from.is_bot) return { ok: true, ignored: true };
-  if (message.chat.type !== "private") return { ok: true, ignored: "non-private message" };
+  if (message.chat.type !== "private") return handleGroupMessage(message);
 
   const supabase = getSupabaseAdmin();
   let session = await getOrCreateSession(message);
@@ -122,14 +160,21 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
         architect_telegram_username: session.telegram_username ?? project.architect_telegram_username
       })
       .eq("id", project.id);
-    session = await updateSession(session.id, { project_id: project.id, state: "AWAITING_FLOOR_COUNT", telegram_chat_id: message.chat.id });
-    await botReply(message.chat.id, project.id, null, `Great! You're verified for project ${project.project_name}. How many total floors does this building have, including basements, ground floor, and rooftop if applicable?`);
+    session = await updateSession(session.id, { project_id: project.id, state: "COLLECTING_PURPOSE", telegram_chat_id: message.chat.id });
+    await botReply(message.chat.id, project.id, null, `Great! You're verified for project ${project.project_name}. What is the primary purpose of this building? For example: residential, commercial, mixed-use, industrial, hospital, hotel, or school.`);
     return { ok: true };
   }
 
   const { data: projectData, error: projectError } = await supabase.from("projects").select("*").eq("id", session.project_id).single();
   if (projectError) throw projectError;
   const project = projectData as Project;
+
+  if (session.state === "COLLECTING_PURPOSE") {
+    await supabase.from("projects").update({ building_purpose: text }).eq("id", project.id);
+    await updateSession(session.id, { state: "AWAITING_FLOOR_COUNT" });
+    await botReply(message.chat.id, project.id, null, "How many total floors does this building have, including basements, ground floor, and rooftop if applicable?");
+    return { ok: true };
+  }
 
   if (session.state === "AWAITING_FLOOR_COUNT") {
     const count = parsePositiveInteger(text);
@@ -152,14 +197,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
     }
     const floors = await createFloors(project, parsed.names);
     await supabase.from("projects").update({ floor_sequence: parsed.names, current_floor: 0 }).eq("id", project.id);
-    await updateSession(session.id, { state: "COLLECTING_PURPOSE", current_floor_id: floors[0]?.id ?? null });
-    await botReply(message.chat.id, project.id, null, "What is the primary purpose of this building? For example: residential, commercial, mixed-use, industrial, hospital, hotel, or school.");
-    return { ok: true };
-  }
-
-  if (session.state === "COLLECTING_PURPOSE") {
-    await supabase.from("projects").update({ building_purpose: text }).eq("id", project.id);
-    await updateSession(session.id, { state: "COLLECTING_SPECIAL_REQUIREMENTS" });
+    await updateSession(session.id, { state: "COLLECTING_SPECIAL_REQUIREMENTS", current_floor_id: floors[0]?.id ?? null });
     await botReply(message.chat.id, project.id, null, "Any special electrical requirements? Include backup generators, solar, EV charging, server rooms, industrial machinery, medical equipment, or similar loads.");
     return { ok: true };
   }
@@ -186,6 +224,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
       fileId: message.document.file_id,
       filename: message.document.file_name
     });
+    void triggerJobProcessing();
     await updateSession(session.id, { state: "ANALYZING", current_floor_id: floor.id });
     await botReply(message.chat.id, project.id, floor.id, "PDF received. I am converting and analyzing the floor plan now.");
     return { ok: true };
@@ -198,6 +237,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
     }
     await supabase.from("floors").update({ architect_answers: { raw: text }, status: "designing" }).eq("id", session.current_floor_id);
     await createJob("generate_design", { projectId: project.id, floorId: session.current_floor_id });
+    void triggerJobProcessing();
     await updateSession(session.id, { state: "DESIGNING" });
     await botReply(message.chat.id, project.id, session.current_floor_id, "Thank you. I am generating the electrical design and will send it for engineering review.");
     return { ok: true };

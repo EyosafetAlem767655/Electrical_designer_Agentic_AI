@@ -38,7 +38,6 @@ export async function sendTelegramMessage(chatId: number | string, text: string)
   return telegramApi<{ message_id: number }>("sendMessage", {
     chat_id: chatId,
     text,
-    parse_mode: "Markdown",
     disable_web_page_preview: true
   });
 }

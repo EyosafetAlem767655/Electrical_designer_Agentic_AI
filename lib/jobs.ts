@@ -1,4 +1,5 @@
 import { DEFAULT_SYMBOL_LEGEND } from "@/lib/constants";
+import { getBaseUrl, getEnv } from "@/lib/env";
 import { convertPdfToPngPages, createFloorPdf, createProjectPackagePdf } from "@/lib/pdf-utils";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
@@ -11,6 +12,19 @@ export async function createJob(type: JobType, payload: Record<string, unknown>)
   const { data, error } = await supabase.from("jobs").insert({ type, payload }).select("*").single();
   if (error) throw error;
   return data as Job;
+}
+
+export async function triggerJobProcessing() {
+  const baseUrl = getBaseUrl();
+  const secret = getEnv("JOB_SECRET") ?? getEnv("CRON_SECRET");
+  try {
+    await fetch(`${baseUrl}/api/jobs/process`, {
+      method: "POST",
+      headers: secret ? { "x-job-secret": secret } : undefined
+    });
+  } catch {
+    // Cron/manual processing remains the durable fallback.
+  }
 }
 
 async function claimNextJob() {
@@ -159,6 +173,8 @@ async function processGenerateDesign(job: Job) {
       ai_analysis: floor.ai_analysis,
       architect_answers: floor.architect_answers,
       special_requirements: project.special_requirements,
+      architectural_image_url: floor.architectural_image_url,
+      previous_design: existing?.[0] ?? null,
       improvement_request: improvementRequest
     }
   });
@@ -253,4 +269,28 @@ export async function processNextJob() {
     await failJob(job, error);
     throw error;
   }
+}
+
+export async function processJobs(options: { maxJobs?: number; maxMs?: number } = {}) {
+  const started = Date.now();
+  const maxJobs = options.maxJobs ?? 10;
+  const maxMs = options.maxMs ?? 50_000;
+  const results: Array<{ processed: boolean; jobId?: string; type?: string; error?: string }> = [];
+
+  for (let index = 0; index < maxJobs; index += 1) {
+    if (Date.now() - started > maxMs) break;
+    try {
+      const result = await processNextJob();
+      if (!result.processed) break;
+      results.push(result);
+    } catch (error) {
+      results.push({ processed: false, error: error instanceof Error ? error.message : "Job processing failed" });
+    }
+  }
+
+  return {
+    processed: results.filter((item) => item.processed).length,
+    failed: results.filter((item) => item.error).length,
+    results
+  };
 }

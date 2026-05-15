@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Bot, Building2, FileText, MessageSquare, MoveUpRight, Sparkles } from "lucide-react";
+import { AlertTriangle, Bot, Building2, FileText, Link2, MessageSquare, MoveUpRight, Sparkles } from "lucide-react";
 import { DesignViewer } from "@/components/ui/DesignViewer";
 import { FloorTimeline } from "@/components/ui/FloorTimeline";
 import { GlassPanel } from "@/components/ui/GlassPanel";
@@ -19,6 +19,12 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const selectedDesign = selectedFloor ? bundle.designs.find((design) => design.floor_id === selectedFloor.id) ?? null : null;
   const floorConversations = selectedFloor ? bundle.conversations.filter((item) => item.floor_id === selectedFloor.id || !item.floor_id) : bundle.conversations;
   const approved = bundle.floors.filter((floor) => floor.status === "approved").length;
+  const bindCommand = `/bind ${bundle.project.project_code ?? bundle.project.id.slice(0, 8).toUpperCase()}`;
+  const bindingStatus = bundle.project.group_chat_id
+    ? `Bound to ${bundle.project.telegram_group_title ?? bundle.project.group_chat_id}`
+    : "Waiting for group bind";
+  const failedJobs = bundle.jobs.filter((job) => job.status === "failed");
+  const activeJobs = bundle.jobs.filter((job) => job.status === "pending" || job.status === "processing");
 
   return (
     <div className="space-y-5">
@@ -78,6 +84,48 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </div>
           <div className="mt-4">
             <ProjectActions projectId={id} floor={selectedFloor} design={selectedDesign} />
+          </div>
+        </GlassPanel>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[1fr_380px]">
+        <GlassPanel>
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#d6b17d]/24 bg-[#d6b17d]/10">
+              <Link2 className="h-5 w-5 text-[#d6b17d]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#fffaf0]">Telegram Group Binding</p>
+              <p className="mt-1 text-sm text-[#efe4d4]/62">{bindingStatus}</p>
+              {!bundle.project.group_chat_id ? (
+                <div className="mt-3 rounded border border-[#c6a171]/16 bg-white/[0.025] p-3">
+                  <p className="text-xs uppercase tracking-[0.1em] text-[#c9b9a6]/48">Send this in the Telegram group</p>
+                  <code className="mt-2 block select-all text-base font-semibold text-[#fffaf0]">{bindCommand}</code>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-[#c9b9a6]/52">Outreach: {bundle.project.telegram_outreach_status ?? "bound"} - Group ID {bundle.project.group_chat_id}</p>
+              )}
+            </div>
+          </div>
+        </GlassPanel>
+
+        <GlassPanel>
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#8fa37c]/24 bg-[#8fa37c]/10">
+              <Bot className="h-5 w-5 text-[#dfe8d7]" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[#fffaf0]">Automation Queue</p>
+              <p className="mt-1 text-sm text-[#efe4d4]/62">{activeJobs.length} active job{activeJobs.length === 1 ? "" : "s"} - {failedJobs.length} failed</p>
+              {failedJobs[0] ? (
+                <p className="mt-3 rounded border border-rose-300/24 bg-rose-500/10 p-3 text-sm leading-5 text-rose-100">
+                  <AlertTriangle className="mr-2 inline h-4 w-4" />
+                  {failedJobs[0].type}: {failedJobs[0].error ?? "Unknown failure"}
+                </p>
+              ) : (
+                <p className="mt-3 text-xs text-[#c9b9a6]/52">Cron and enqueue triggers process PDF, AI, revision, and package jobs automatically.</p>
+              )}
+            </div>
           </div>
         </GlassPanel>
       </section>

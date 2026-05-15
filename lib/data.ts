@@ -1,6 +1,6 @@
 import { DEFAULT_SYMBOL_LEGEND } from "@/lib/constants";
 import { getSupabaseAdmin, hasSupabaseServerEnv } from "@/lib/supabase";
-import type { Conversation, Design, Floor, Project, ProjectBundle } from "@/types";
+import type { Conversation, Design, Floor, Job, Project, ProjectBundle } from "@/types";
 
 const demoProject: Project = {
   id: "demo-project",
@@ -20,6 +20,10 @@ const demoProject: Project = {
   telegram_chat_id: null,
   telegram_user_id: null,
   group_chat_id: null,
+  telegram_group_invite_link: null,
+  telegram_group_title: null,
+  telegram_group_bound_at: null,
+  telegram_outreach_status: null,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString()
 };
@@ -76,6 +80,7 @@ export async function getProjectBundle(projectId: string): Promise<ProjectBundle
       project: demoProject,
       floors: demoFloors,
       designs: demoDesigns,
+      jobs: [],
       conversations: [
         {
           id: "demo-conversation",
@@ -92,16 +97,23 @@ export async function getProjectBundle(projectId: string): Promise<ProjectBundle
   }
 
   const supabase = getSupabaseAdmin();
-  const [{ data: project, error: projectError }, { data: floors, error: floorsError }, { data: conversations, error: conversationsError }] =
+  const [
+    { data: project, error: projectError },
+    { data: floors, error: floorsError },
+    { data: conversations, error: conversationsError },
+    { data: jobs, error: jobsError }
+  ] =
     await Promise.all([
       supabase.from("projects").select("*").eq("id", projectId).single(),
       supabase.from("floors").select("*").eq("project_id", projectId).order("floor_number", { ascending: true }),
-      supabase.from("conversations").select("*").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50)
+      supabase.from("conversations").select("*").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50),
+      supabase.from("jobs").select("*").contains("payload", { projectId }).order("created_at", { ascending: false }).limit(20)
     ]);
 
   if (projectError) return null;
   if (floorsError) throw floorsError;
   if (conversationsError) throw conversationsError;
+  if (jobsError) throw jobsError;
 
   const floorIds = (floors ?? []).map((floor) => floor.id);
   const { data: designs, error: designsError } = floorIds.length
@@ -113,7 +125,8 @@ export async function getProjectBundle(projectId: string): Promise<ProjectBundle
     project: project as Project,
     floors: (floors ?? []) as Floor[],
     designs: (designs ?? []) as Design[],
-    conversations: (conversations ?? []) as Conversation[]
+    conversations: (conversations ?? []) as Conversation[],
+    jobs: (jobs ?? []) as Job[]
   };
 }
 
