@@ -21,6 +21,41 @@ const createProjectSchema = z.object({
   notes: z.string().optional()
 });
 
+type ProjectInsert = {
+  project_name: string;
+  project_code: string;
+  architect_name: string;
+  architect_telegram_username: string;
+  company_name: string | null;
+  building_purpose: string | null;
+  building_address: string | null;
+  notes: string | null;
+  group_chat_id: number | null;
+  status: "created" | "awaiting_verification";
+  telegram_group_invite_link?: string | null;
+  telegram_outreach_status?: string | null;
+};
+
+async function insertProject(supabase: ReturnType<typeof getSupabaseAdmin>, row: ProjectInsert) {
+  const insert = async (payload: ProjectInsert | Omit<ProjectInsert, "telegram_group_invite_link" | "telegram_outreach_status">) =>
+    supabase.from("projects").insert(payload).select("*").single();
+
+  const result = await insert(row);
+  if (!result.error) return result;
+
+  const message = `${result.error.message ?? ""} ${result.error.details ?? ""}`;
+  if (!/telegram_group_invite_link|telegram_outreach_status|schema cache|column/i.test(message)) {
+    return result;
+  }
+
+  const { telegram_group_invite_link: _inviteLink, telegram_outreach_status: _outreachStatus, ...legacyRow } = row;
+  return insert(legacyRow);
+}
+
+async function updateOutreachStatus(supabase: ReturnType<typeof getSupabaseAdmin>, projectId: string, status: string) {
+  await supabase.from("projects").update({ telegram_outreach_status: status }).eq("id", projectId);
+}
+
 export async function GET() {
   try {
     const projects = await getProjects();
@@ -40,34 +75,30 @@ export async function POST(request: Request) {
     const supabase = getSupabaseAdmin();
     const parsedGroup = parseTelegramGroupInput(input.groupChatId);
     const telegramInviteLink = input.telegramGroupInviteLink?.trim() || parsedGroup.inviteLink;
-    const { data: project, error } = await supabase
-      .from("projects")
-      .insert({
-        project_name: input.projectName,
-        project_code: makeProjectCode(input.projectName),
-        architect_name: input.architectName,
-        architect_telegram_username: normalizeTelegramUsername(input.architectTelegramUsername),
-        company_name: input.companyName || null,
-        building_purpose: input.buildingPurpose || null,
-        building_address: input.buildingAddress || null,
-        notes: input.notes || null,
-        group_chat_id: parsedGroup.chatId,
-        telegram_group_invite_link: telegramInviteLink || null,
-        telegram_outreach_status: parsedGroup.chatId ? "pending" : "awaiting_bind",
-        status: parsedGroup.chatId ? "awaiting_verification" : "created"
-      })
-      .select("*")
-      .single();
+    const { data: project, error } = await insertProject(supabase, {
+      project_name: input.projectName,
+      project_code: makeProjectCode(input.projectName),
+      architect_name: input.architectName,
+      architect_telegram_username: normalizeTelegramUsername(input.architectTelegramUsername),
+      company_name: input.companyName || null,
+      building_purpose: input.buildingPurpose || null,
+      building_address: input.buildingAddress || null,
+      notes: input.notes || null,
+      group_chat_id: parsedGroup.chatId,
+      telegram_group_invite_link: telegramInviteLink || null,
+      telegram_outreach_status: parsedGroup.chatId ? "pending" : "awaiting_bind",
+      status: parsedGroup.chatId ? "awaiting_verification" : "created"
+    });
     if (error) throw error;
 
     let warning: string | null = null;
     if (parsedGroup.chatId) {
       try {
-        await sendProjectInvite(parsedGroup.chatId, input.architectTelegramUsername);
-        await supabase.from("projects").update({ telegram_outreach_status: "invite_sent" }).eq("id", project.id);
+        await sendProjectInvite(parsedGroup.chatId, input.architectTelegramUsername, input.architectName);
+        await updateOutreachStatus(supabase, project.id, "invite_sent").catch(() => undefined);
       } catch (telegramError) {
         warning = telegramError instanceof Error ? telegramError.message : "Telegram outreach failed";
-        await supabase.from("projects").update({ telegram_outreach_status: "invite_failed" }).eq("id", project.id);
+        await updateOutreachStatus(supabase, project.id, "invite_failed").catch(() => undefined);
       }
     }
 

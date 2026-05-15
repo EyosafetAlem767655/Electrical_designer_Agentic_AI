@@ -29,6 +29,24 @@ export function isProjectNameMatch(candidate: string, projectName: string) {
   return distance / Math.max(a.length, b.length) <= 0.2;
 }
 
+export function isPersonNameMatch(candidate: string, expectedName: string) {
+  return isProjectNameMatch(candidate, expectedName);
+}
+
+export function parseVerificationDetails(value: string) {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const fullNameLine = lines.find((line) => /^full\s*name\s*:/i.test(line));
+  const projectLine = lines.find((line) => /^project\s*:/i.test(line));
+  const fullName = fullNameLine?.replace(/^full\s*name\s*:\s*/i, "").trim() || lines[0] || "";
+  const projectName = projectLine?.replace(/^project\s*:\s*/i, "").trim() || lines[1] || "";
+
+  return { fullName, projectName };
+}
+
 export function parsePositiveInteger(value: string) {
   const match = value.match(/\d+/);
   if (!match) return null;

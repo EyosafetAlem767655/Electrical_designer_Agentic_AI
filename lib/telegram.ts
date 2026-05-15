@@ -42,12 +42,13 @@ export async function sendTelegramMessage(chatId: number | string, text: string)
   });
 }
 
-export async function sendProjectInvite(groupChatId: number | string, architectUsername: string) {
+export async function sendProjectInvite(groupChatId: number | string, architectUsername: string, architectName?: string | null) {
   const username = normalizeTelegramUsername(architectUsername);
   const botUsername = getEnv("TELEGRAM_BOT_USERNAME") ?? "awolaibot";
+  const name = architectName?.trim() ? `${architectName.trim()} ` : "";
   return sendTelegramMessage(
     groupChatId,
-    `Hello @${username}! I'm the Elec Nova Tech AI assistant. I've been assigned to help with an electrical design project. Please send me a direct message to get started. Tap @${botUsername} and press Start.`
+    `Hello ${name}@${username}! I'm the Elec Nova Tech AI assistant. I've been assigned to help with an electrical design project. Please send me a direct message to get started. Tap @${botUsername} and press Start.`
   );
 }
 

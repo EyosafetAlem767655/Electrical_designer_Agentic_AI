@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseTelegramGroupInput } from "@/lib/utils";
-import { isProjectNameMatch, parseBindCommand, parseFloorNames, parsePositiveInteger } from "@/lib/state-machine";
+import { isPersonNameMatch, isProjectNameMatch, parseBindCommand, parseFloorNames, parsePositiveInteger, parseVerificationDetails } from "@/lib/state-machine";
 
 describe("state machine helpers", () => {
   it("matches project names case-insensitively with minor punctuation differences", () => {
@@ -30,6 +30,18 @@ describe("state machine helpers", () => {
     expect(parseBindCommand("/bind NOVA1234")).toBe("NOVA1234");
     expect(parseBindCommand("/bind@awolaibot nova_123")).toBe("NOVA_123");
     expect(parseBindCommand("/start")).toBe(null);
+  });
+
+  it("parses architect verification details", () => {
+    expect(parseVerificationDetails("Full name: Amanuel Tesfaye\nProject: Nova Heights")).toEqual({
+      fullName: "Amanuel Tesfaye",
+      projectName: "Nova Heights"
+    });
+    expect(parseVerificationDetails("Amanuel Tesfaye\nNova Heights")).toEqual({
+      fullName: "Amanuel Tesfaye",
+      projectName: "Nova Heights"
+    });
+    expect(isPersonNameMatch("Amanuel Tsefaye", "Amanuel Tesfaye")).toBe(true);
   });
 
   it("accepts invite links as metadata without treating them as chat IDs", () => {

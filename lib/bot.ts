@@ -1,6 +1,6 @@
 import { createJob, triggerJobProcessing } from "@/lib/jobs";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { isProjectNameMatch, parseBindCommand, parseFloorNames, parsePositiveInteger } from "@/lib/state-machine";
+import { isPersonNameMatch, isProjectNameMatch, parseBindCommand, parseFloorNames, parsePositiveInteger, parseVerificationDetails } from "@/lib/state-machine";
 import { sendProjectInvite, sendTelegramMessage, type TelegramMessage, type TelegramUpdate } from "@/lib/telegram";
 import { normalizeTelegramUsername } from "@/lib/utils";
 import type { BotSession, Floor, Project } from "@/types";
@@ -53,7 +53,7 @@ async function updateSession(sessionId: string, values: Partial<BotSession>) {
   return data as BotSession;
 }
 
-async function findProjectForVerification(text: string, username?: string | null) {
+async function findProjectForVerification(fullName: string, projectName: string, username?: string | null) {
   const supabase = getSupabaseAdmin();
   const normalizedUsername = username ? normalizeTelegramUsername(username) : null;
   let query = supabase.from("projects").select("*").in("status", ["created", "awaiting_verification", "verified", "in_progress"]);
@@ -62,7 +62,39 @@ async function findProjectForVerification(text: string, username?: string | null
   }
   const { data, error } = await query;
   if (error) throw error;
-  return ((data ?? []) as Project[]).find((project) => isProjectNameMatch(text, project.project_name)) ?? null;
+  return (
+    ((data ?? []) as Project[]).find((project) => isProjectNameMatch(projectName, project.project_name) && isPersonNameMatch(fullName, project.architect_name)) ??
+    null
+  );
+}
+
+async function updateOutreachStatus(projectId: string, status: string) {
+  const supabase = getSupabaseAdmin();
+  await supabase.from("projects").update({ telegram_outreach_status: status }).eq("id", projectId);
+}
+
+async function bindGroup(project: Project, message: TelegramMessage) {
+  const supabase = getSupabaseAdmin();
+  const update = {
+    group_chat_id: message.chat.id,
+    telegram_group_title: message.chat.title ?? null,
+    telegram_group_bound_at: new Date().toISOString(),
+    telegram_outreach_status: "bound",
+    status: project.status === "created" ? "awaiting_verification" : project.status
+  };
+  const { error } = await supabase.from("projects").update(update).eq("id", project.id);
+  if (!error) return;
+
+  const messageText = `${error.message ?? ""} ${error.details ?? ""}`;
+  if (!/telegram_group_title|telegram_group_bound_at|telegram_outreach_status|schema cache|column/i.test(messageText)) throw error;
+  const { error: legacyError } = await supabase
+    .from("projects")
+    .update({
+      group_chat_id: message.chat.id,
+      status: project.status === "created" ? "awaiting_verification" : project.status
+    })
+    .eq("id", project.id);
+  if (legacyError) throw legacyError;
 }
 
 async function handleGroupMessage(message: TelegramMessage) {
@@ -78,23 +110,14 @@ async function handleGroupMessage(message: TelegramMessage) {
     return { ok: false, error: "project_not_found" };
   }
 
-  await supabase
-    .from("projects")
-    .update({
-      group_chat_id: message.chat.id,
-      telegram_group_title: message.chat.title ?? null,
-      telegram_group_bound_at: new Date().toISOString(),
-      telegram_outreach_status: "bound",
-      status: project.status === "created" ? "awaiting_verification" : project.status
-    })
-    .eq("id", project.id);
+  await bindGroup(project as Project, message);
 
   await logMessage(project.id, null, "bot", `Telegram group bound: ${message.chat.title ?? message.chat.id}`, "command", message.message_id);
   try {
-    await sendProjectInvite(message.chat.id, project.architect_telegram_username);
-    await supabase.from("projects").update({ telegram_outreach_status: "invite_sent" }).eq("id", project.id);
+    await sendProjectInvite(message.chat.id, project.architect_telegram_username, project.architect_name);
+    await updateOutreachStatus(project.id, "invite_sent").catch(() => undefined);
   } catch (error) {
-    await supabase.from("projects").update({ telegram_outreach_status: "invite_failed" }).eq("id", project.id);
+    await updateOutreachStatus(project.id, "invite_failed").catch(() => undefined);
     await sendTelegramMessage(message.chat.id, `Group bound for ${project.project_name}, but I could not send the architect invite: ${error instanceof Error ? error.message : "Telegram send failed"}`);
     return { ok: false, error: "invite_failed" };
   }
@@ -139,15 +162,21 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
         message.chat.id,
         null,
         null,
-        "Welcome! I'm the Elec Nova Tech electrical design assistant. To verify your identity, please tell me the project name you're working on."
+        "Welcome! I'm the Elec Nova Tech electrical design assistant. To verify your identity, please send your full name and the project you work on like this:\nFull name: Your Name\nProject: Project Name"
       );
       await updateSession(session.id, { state: "AWAITING_VERIFICATION" });
       return { ok: true };
     }
 
-    const project = await findProjectForVerification(text, session.telegram_username);
+    const details = parseVerificationDetails(text);
+    if (!details.fullName || !details.projectName) {
+      await botReply(message.chat.id, null, null, "Please send your full name and project name like this:\nFull name: Your Name\nProject: Project Name");
+      return { ok: true };
+    }
+
+    const project = await findProjectForVerification(details.fullName, details.projectName, session.telegram_username);
     if (!project) {
-      await botReply(message.chat.id, null, null, "I'm sorry, I don't have a project with that name. Please check with your project coordinator and try again.");
+      await botReply(message.chat.id, null, null, "I'm sorry, I could not verify that full name and project. Please check with your project admin and try again.");
       return { ok: true };
     }
 
