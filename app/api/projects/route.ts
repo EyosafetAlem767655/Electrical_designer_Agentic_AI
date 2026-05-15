@@ -81,7 +81,9 @@ export async function POST(request: Request) {
     const supabase = getSupabaseAdmin();
     const parsedGroup = parseTelegramGroupInput(input.groupChatId);
     const telegramInviteLink = input.telegramGroupInviteLink?.trim() || parsedGroup.inviteLink;
-    const architectTelegramUsername = input.architectTelegramUsername?.trim() ? normalizeTelegramUsername(input.architectTelegramUsername) : "";
+    const architectTelegramUsername = input.architectTelegramUsername?.trim()
+      ? normalizeTelegramUsername(input.architectTelegramUsername)
+      : `pending-${Date.now()}`;
     const { data: project, error } = await insertProject(supabase, {
       project_name: input.projectName,
       project_code: makeProjectCode(input.projectName),
@@ -120,6 +122,7 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error) {
+    console.error("Project creation failed", error);
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Failed to create project" }, { status: 400 });
   }
 }

@@ -15,6 +15,16 @@ export type TelegramUpdate = {
   message?: TelegramMessage;
 };
 
+export type TelegramWebhookInfo = {
+  url: string;
+  has_custom_certificate: boolean;
+  pending_update_count: number;
+  last_error_date?: number;
+  last_error_message?: string;
+  max_connections?: number;
+  allowed_updates?: string[];
+};
+
 function telegramToken() {
   return requireEnv("TELEGRAM_BOT_TOKEN");
 }
@@ -32,6 +42,17 @@ export async function telegramApi<T>(method: string, body?: Record<string, unkno
   }
 
   return payload.result as T;
+}
+
+export async function setTelegramWebhook(url: string) {
+  return telegramApi<true>("setWebhook", {
+    url,
+    allowed_updates: ["message"]
+  });
+}
+
+export async function getTelegramWebhookInfo() {
+  return telegramApi<TelegramWebhookInfo>("getWebhookInfo");
 }
 
 export async function sendTelegramMessage(chatId: number | string, text: string) {

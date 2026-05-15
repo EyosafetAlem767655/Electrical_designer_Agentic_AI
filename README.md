@@ -15,7 +15,21 @@ Agentic electrical design dashboard and Telegram intake system for floor-by-floo
 
 ## Webhook
 
-Register Telegram webhook after deployment:
+Register Telegram webhook after deployment from the app:
+
+```bash
+curl -X POST "$TELEGRAM_WEBHOOK_BASE_URL/api/telegram/setup" \
+  -H "x-setup-secret: $TELEGRAM_SETUP_SECRET"
+```
+
+Check current webhook status:
+
+```bash
+curl "$TELEGRAM_WEBHOOK_BASE_URL/api/telegram/setup" \
+  -H "x-setup-secret: $TELEGRAM_SETUP_SECRET"
+```
+
+Or register directly with Telegram:
 
 ```bash
 curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
