@@ -19,6 +19,19 @@ Vercel environment variable names are case-sensitive. Use `TELEGRAM_BOT_TOKEN` a
 
 After adding or changing Vercel environment variables, redeploy the project so runtime functions receive the new values.
 
+## Supabase Schema Reset
+
+If project creation fails with a schema cache error such as `Could not find the 'architect_name' column of 'projects'`, the Supabase database has an incompatible pre-existing table. For a clean prototype database, run this destructive reset in the Supabase SQL editor:
+
+```sql
+-- Paste and run the full contents of:
+-- supabase/reset_app_schema.sql
+```
+
+This drops and recreates only the app tables: `projects`, `floors`, `designs`, `conversations`, `files`, `bot_sessions`, and `jobs`. It also creates or updates the public `project-files` storage bucket.
+
+After running it, open Supabase API settings and reload the schema cache if needed, then redeploy or retry project creation.
+
 ## Webhook
 
 You can register and inspect the Telegram webhook from the dashboard at `/telegram`.
