@@ -5,7 +5,7 @@ import { NeonButton } from "@/components/ui/NeonButton";
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-30 border-b border-[#1f2a33]/10 bg-[#f2eef8]/76 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 border-b border-[#94d2cc]/14 bg-[#07111f]/78 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4">
         <Link href="/" className="flex min-w-0 items-center gap-3 lg:hidden">
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#2f8178]/18 bg-[#2f8178]/10 shadow-[0_12px_26px_rgba(31,42,51,0.08)]">

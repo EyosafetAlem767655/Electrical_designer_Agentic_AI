@@ -5,21 +5,26 @@ type StickerKind = "drafting" | "handoff" | "package";
 export function StudioSticker({ kind, className }: { kind: StickerKind; className?: string }) {
   if (kind === "handoff") {
     return (
-      <div className={cx("studio-sticker", className)} aria-hidden="true">
-        <svg viewBox="0 0 220 170" role="img">
-          <path className="sticker-paper" d="M41 26c33-21 106-21 137 8 26 24 13 82-25 105-37 22-104 14-132-19C-5 88 7 48 41 26Z" />
-          <g className="sticker-orbit">
-            <circle className="sticker-dot coral" cx="106" cy="22" r="6" />
-            <circle className="sticker-dot" cx="158" cy="78" r="5" />
-            <circle className="sticker-dot coral" cx="78" cy="131" r="4" />
+      <div className={cx("tech-ambient", className)} aria-hidden="true">
+        <svg viewBox="0 0 260 190" role="img">
+          <defs>
+            <linearGradient id="handoffGlow" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stopColor="#5eead4" />
+              <stop offset="100%" stopColor="#8b5cf6" />
+            </linearGradient>
+          </defs>
+          <path className="tech-halo" d="M35 95c0-42 41-76 94-76s96 34 96 76-43 76-96 76-94-34-94-76Z" />
+          <path className="tech-ring" d="M74 96c0-25 25-45 56-45s56 20 56 45-25 45-56 45-56-20-56-45Z" />
+          <path className="tech-route" d="M58 104c24-39 47-38 72-6s49 33 76-8" />
+          <circle className="tech-node node-a" cx="58" cy="104" r="8" />
+          <circle className="tech-node node-b" cx="130" cy="98" r="10" />
+          <circle className="tech-node node-c" cx="206" cy="90" r="8" />
+          <path className="tech-scan" d="M93 68h75M83 121h96" />
+          <g className="tech-orbit">
+            <circle cx="130" cy="42" r="4" fill="#f8fafc" />
+            <circle cx="190" cy="122" r="3" fill="#5eead4" />
+            <circle cx="76" cy="130" r="3" fill="#a78bfa" />
           </g>
-          <circle className="sticker-sheet" cx="66" cy="82" r="25" />
-          <circle className="sticker-sheet" cx="154" cy="78" r="25" />
-          <path className="sticker-route" d="M91 80c20-30 40 26 62-2" />
-          <circle className="sticker-pulse" cx="91" cy="80" r="7" />
-          <path className="sticker-line" d="M54 77h24" />
-          <path className="sticker-line delayed" d="M143 73h24" />
-          <path className="sticker-accent" d="M105 113l30 12-25 18 4-17-9-13Z" />
         </svg>
       </div>
     );
@@ -27,41 +32,43 @@ export function StudioSticker({ kind, className }: { kind: StickerKind; classNam
 
   if (kind === "package") {
     return (
-      <div className={cx("studio-sticker", className)} aria-hidden="true">
-        <svg viewBox="0 0 220 170" role="img">
-          <path className="sticker-paper plum" d="M42 29c36-25 111-19 142 15 23 25 2 82-37 99-40 18-105 8-128-27C-3 81 9 52 42 29Z" />
-          <g className="sticker-stack-b">
-            <path className="sticker-sheet" d="M70 49h72l21 21v65H70V49Z" />
-            <path className="sticker-fold" d="M142 49v22h21" />
+      <div className={cx("tech-ambient", className)} aria-hidden="true">
+        <svg viewBox="0 0 260 190" role="img">
+          <path className="tech-halo" d="M38 112c-10-38 32-78 86-89 56-11 104 10 112 49 8 40-28 79-86 91-57 12-102-12-112-51Z" />
+          <g className="tech-stack stack-back">
+            <path className="tech-panel" d="M78 45h89l31 25v75H78V45Z" />
+            <path className="tech-fold" d="M167 45v26h31" />
           </g>
-          <g className="sticker-stack-a">
-            <path className="sticker-sheet" d="M54 39h72l21 21v65H54V39Z" />
-            <path className="sticker-fold" d="M126 39v22h21" />
+          <g className="tech-stack stack-front">
+            <path className="tech-panel" d="M58 32h90l30 25v75H58V32Z" />
+            <path className="tech-fold" d="M148 32v26h30" />
           </g>
-          <path className="sticker-line" d="M72 76h54" />
-          <path className="sticker-line delayed" d="M72 93h39" />
-          <path className="sticker-line delayed-more" d="M72 110h62" />
-          <circle className="sticker-dot coral" cx="154" cy="120" r="9" />
-          <path className="sticker-accent" d="M149 117l5 6 13-17" />
+          <path className="tech-scan" d="M79 72h71M79 91h50M79 110h76" />
+          <path className="tech-check" d="M178 121l11 12 26-33" />
+          <circle className="tech-node node-c" cx="198" cy="113" r="22" />
         </svg>
       </div>
     );
   }
 
   return (
-    <div className={cx("studio-sticker", className)} aria-hidden="true">
-      <svg viewBox="0 0 220 170" role="img">
-        <path className="sticker-paper teal" d="M38 32c34-31 117-27 149 4 31 31 16 93-29 113-45 20-118 4-145-36C-10 78 5 61 38 32Z" />
-        <path className="sticker-sheet" d="M43 42h111v82H43V42Z" />
-        <path className="sticker-grid" d="M43 62h111M43 82h111M43 102h111M65 42v82M87 42v82M109 42v82M131 42v82" />
-        <path className="sticker-route" d="M58 111c13-51 42 1 58-39 13-34 37-11 52-31" />
-        <circle className="sticker-pulse" cx="58" cy="111" r="7" />
-        <path className="sticker-line delayed" d="M60 58h56" />
-        <path className="sticker-line delayed-more" d="M60 92h34" />
-        <g className="sticker-pencil">
-          <path className="sticker-accent" d="M143 118l28-69 17 8-29 69-19 11 3-19Z" />
-          <path className="sticker-fold" d="M143 118l16 8" />
-        </g>
+    <div className={cx("tech-ambient", className)} aria-hidden="true">
+      <svg viewBox="0 0 260 190" role="img">
+        <defs>
+          <linearGradient id="draftingPanel" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stopColor="#172554" />
+            <stop offset="100%" stopColor="#0f766e" />
+          </linearGradient>
+        </defs>
+        <path className="tech-halo" d="M33 96c0-45 44-82 99-82s99 37 99 82-44 82-99 82-99-37-99-82Z" />
+        <path className="tech-board" d="M48 45h140l24 23v78H48V45Z" />
+        <path className="tech-fold" d="M188 45v24h24" />
+        <path className="tech-grid" d="M67 66h110M67 86h126M67 106h105M67 126h120M88 55v85M111 55v85M134 55v85M157 55v85" />
+        <path className="tech-route" d="M68 128c20-68 55 12 79-40 18-39 43-14 66-40" />
+        <circle className="tech-node node-a" cx="68" cy="128" r="7" />
+        <circle className="tech-node node-b" cx="148" cy="88" r="7" />
+        <circle className="tech-node node-c" cx="213" cy="48" r="7" />
+        <path className="tech-cursor" d="M184 133l28-58 18 9-29 59-19 10 2-20Z" />
       </svg>
     </div>
   );

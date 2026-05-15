@@ -64,23 +64,26 @@ export default async function CommandCenterPage() {
 
         <div className="grid gap-4">
           <div className="studio-surface rounded-[18px_34px_14px_30px] p-6">
-            <StudioSticker kind="package" className="float-right -mr-5 -mt-7 w-32 opacity-90" />
             <p className="studio-eyebrow">Studio Signals</p>
-            <div className="mt-5 grid grid-cols-3 gap-3">
+            <div className="mt-5 grid gap-3">
               {metrics.map(({ label, value, icon: Icon, note }) => (
-                <div key={label} className="rounded-[20px_8px_18px_12px] bg-white/60 p-4">
-                  <Icon className="h-5 w-5 text-[#2f8178]" />
-                  <p className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-[#1f2a33]">{value}</p>
-                  <p className="mt-1 text-sm font-semibold text-[#1f2a33]">{label}</p>
-                  <p className="mt-1 text-xs text-[#1f2a33]/48">{note}</p>
+                <div key={label} className="grid grid-cols-[44px_1fr_auto] items-center gap-3 rounded-[18px_8px_16px_10px] bg-white/60 p-3">
+                  <div className="grid h-10 w-10 place-items-center rounded-full border border-[#5eead4]/16 bg-[#5eead4]/8">
+                    <Icon className="h-5 w-5 text-[#5eead4]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-[#1f2a33]">{label}</p>
+                    <p className="truncate text-xs text-[#1f2a33]/48">{note}</p>
+                  </div>
+                  <p className="text-3xl font-semibold tracking-[-0.04em] text-[#1f2a33]">{value}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="studio-surface rounded-[32px_12px_26px_16px] p-6">
-            <StudioSticker kind="handoff" className="float-right -mr-4 -mt-5 w-36 opacity-90" />
-            <div className="flex items-center justify-between gap-3">
+          <div className="studio-surface relative overflow-hidden rounded-[32px_12px_26px_16px] p-6">
+            <StudioSticker kind="handoff" className="pointer-events-none absolute right-4 top-3 hidden w-28 opacity-75 xl:block" />
+            <div className="relative flex items-center justify-between gap-3 pr-0 xl:pr-24">
               <div>
                 <p className="studio-eyebrow">Current Brief</p>
                 <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[#1f2a33]">{featured?.project_name ?? "No active project"}</h2>
