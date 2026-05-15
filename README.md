@@ -24,6 +24,7 @@ After adding or changing Vercel environment variables, redeploy the project so r
 You can register and inspect the Telegram webhook from the dashboard at `/telegram`.
 
 If `TELEGRAM_SETUP_SECRET`, `JOB_SECRET`, or `CRON_SECRET` is configured, enter that value in the setup secret field on `/telegram` before pressing Check Status or Register Webhook.
+The setup page keeps that secret in browser session storage, so it remains available while that tab is open.
 
 Register Telegram webhook after deployment from the app:
 
@@ -42,6 +43,8 @@ curl "$TELEGRAM_WEBHOOK_BASE_URL/api/telegram/setup" \
 If `TELEGRAM_WEBHOOK_BASE_URL` is not configured, `/api/telegram/setup` derives the webhook origin from the incoming request headers, including Vercel's forwarded host/protocol headers.
 
 The webhook endpoint returns readiness details from `GET /api/telegram/webhook`. If Telegram reports a previous `500 Internal Server Error`, redeploy this version and press Register Webhook again from `/telegram`.
+
+If project creation fails while Supabase env vars are present, check the on-screen diagnostics. In production, `SUPABASE_SERVICE_ROLE_KEY` is recommended for server-side inserts; anon keys can fail when Row Level Security blocks writes.
 
 Or register directly with Telegram:
 

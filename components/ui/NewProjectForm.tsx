@@ -21,11 +21,12 @@ export function NewProjectForm() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    const result = await response.json();
+    const result = await response.json().catch(() => ({ error: "Project creation failed", details: "The server returned a non-JSON response." }));
     setBusy(false);
     if (!response.ok) {
       setError(result.error ?? "Project creation failed");
-      setDetail(result.details ?? result.hint ?? null);
+      const diagnostics = result.diagnostics ? `Diagnostics: ${JSON.stringify(result.diagnostics)}` : null;
+      setDetail([result.details, result.hint, diagnostics].filter(Boolean).join(" ") || null);
       return;
     }
     if (result.warning) {

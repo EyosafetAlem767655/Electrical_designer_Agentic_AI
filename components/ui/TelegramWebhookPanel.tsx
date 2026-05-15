@@ -23,10 +23,24 @@ type WebhookStatus = {
   error?: string;
 };
 
+const setupSecretStorageKey = "elec-nova-telegram-setup-secret";
+
 export function TelegramWebhookPanel() {
   const [status, setStatus] = useState<WebhookStatus | null>(null);
-  const [setupSecret, setSetupSecret] = useState("");
+  const [setupSecret, setSetupSecret] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.sessionStorage.getItem(setupSecretStorageKey) ?? "";
+  });
   const [busy, setBusy] = useState<"check" | "register" | null>(null);
+
+  function updateSetupSecret(value: string) {
+    setSetupSecret(value);
+    if (value.trim()) {
+      window.sessionStorage.setItem(setupSecretStorageKey, value);
+    } else {
+      window.sessionStorage.removeItem(setupSecretStorageKey);
+    }
+  }
 
   async function callSetup(method: "GET" | "POST") {
     setBusy(method === "GET" ? "check" : "register");
@@ -62,7 +76,7 @@ export function TelegramWebhookPanel() {
         <span className="text-xs font-medium text-[#c9b9a6]/62">Setup secret</span>
         <input
           value={setupSecret}
-          onChange={(event) => setSetupSecret(event.target.value)}
+          onChange={(event) => updateSetupSecret(event.target.value)}
           className="mt-2 h-11 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58"
           placeholder="Enter TELEGRAM_SETUP_SECRET, JOB_SECRET, or CRON_SECRET if configured"
           type="password"

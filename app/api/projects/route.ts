@@ -84,7 +84,7 @@ function webhookUrl(request: Request) {
 }
 
 async function ensureWebhookIfPossible(request: Request) {
-  if (!getEnv("TELEGRAM_BOT_TOKEN")) {
+  if (!getEnv("TELEGRAM_BOT_TOKEN") && !getEnv("INSTALLER_TELEGRAM_BOT_TOKEN")) {
     return { ok: false, warning: "TELEGRAM_BOT_TOKEN is missing, so the bot webhook could not be registered." };
   }
   try {
@@ -94,18 +94,34 @@ async function ensureWebhookIfPossible(request: Request) {
   }
 }
 
+function errorText(error: unknown, key: "message" | "details" | "hint" | "code") {
+  if (!error || typeof error !== "object") return undefined;
+  const value = (error as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
 function projectErrorMessage(error: unknown) {
-  if (!(error instanceof Error)) return "Failed to create project";
-  if (/duplicate key|projects_project_name_key|unique/i.test(error.message)) {
+  const message = error instanceof Error ? error.message : errorText(error, "message") ?? String(error);
+  if (/duplicate key|projects_project_name_key|unique/i.test(message)) {
     return "A project with this name already exists. Use a different project name.";
   }
-  if (/row-level security|permission denied|violates row-level security/i.test(error.message)) {
+  if (/row-level security|permission denied|violates row-level security/i.test(message)) {
     return "Supabase rejected the insert. Set SUPABASE_SERVICE_ROLE_KEY in Vercel or disable RLS for this prototype.";
   }
-  if (/Could not find the .* column|schema cache|column/i.test(error.message)) {
-    return `${error.message}. Apply the Supabase migrations or use the original schema-compatible fields.`;
+  if (/Could not find the .* column|schema cache|column/i.test(message)) {
+    return `${message}. Apply the Supabase migrations or use the original schema-compatible fields.`;
   }
-  return error.message;
+  return message || "Failed to create project";
+}
+
+function projectErrorDetails(error: unknown) {
+  if (error instanceof Error) return undefined;
+  const parts = [
+    errorText(error, "details"),
+    errorText(error, "hint"),
+    errorText(error, "code") ? `Code: ${errorText(error, "code")}` : undefined
+  ].filter(Boolean);
+  return parts.length ? parts.join(" ") : undefined;
 }
 
 export async function GET() {
@@ -171,6 +187,19 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error("Project creation failed", error);
-    return NextResponse.json({ ok: false, error: projectErrorMessage(error) }, { status: 400 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: projectErrorMessage(error),
+        details: projectErrorDetails(error),
+        diagnostics: {
+          hasSupabaseServerEnv: hasSupabaseServerEnv(),
+          hasServiceRoleKey: Boolean(getEnv("SUPABASE_SERVICE_ROLE_KEY")),
+          hasAnonKey: Boolean(getEnv("SUPABASE_ANON_KEY") || getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")),
+          hasTelegramBotToken: Boolean(getEnv("TELEGRAM_BOT_TOKEN") || getEnv("INSTALLER_TELEGRAM_BOT_TOKEN"))
+        }
+      },
+      { status: 400 }
+    );
   }
 }
