@@ -23,15 +23,17 @@ curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -d "{\"url\":\"$TELEGRAM_WEBHOOK_BASE_URL/api/telegram/webhook\"}"
 ```
 
-## Telegram Group Binding
+## Telegram Architect Intake
 
-Telegram invite links such as `https://t.me/+...` are stored only for admin reference. The Bot API cannot send messages to an invite link.
+Default flow:
 
-1. Add `@awolaibot` to the Telegram group.
-2. Create the project in the dashboard.
-3. Open the project and copy its `/bind PROJECT_CODE` command.
-4. Send that command in the Telegram group.
-5. The bot captures the real numeric group chat ID, stores it, and posts the architect handoff message.
+1. Create the project in the dashboard with company name, architect full name, and project name.
+2. Open the project page and send the bot start link to the architect.
+3. The architect clicks Start.
+4. The bot asks for full name and project name.
+5. If both match the project record, the floor-by-floor intake continues.
+
+Optional group binding is still supported with `/bind PROJECT_CODE`, but Telegram Bot API cannot send messages directly to invite links such as `https://t.me/+...`.
 
 ## Notes
 

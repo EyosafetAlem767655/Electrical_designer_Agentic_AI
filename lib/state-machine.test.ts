@@ -44,6 +44,12 @@ describe("state machine helpers", () => {
     expect(isPersonNameMatch("Amanuel Tsefaye", "Amanuel Tesfaye")).toBe(true);
   });
 
+  it("accepts start-payload style bot onboarding through explicit verification details", () => {
+    const details = parseVerificationDetails("Full name: Sara Bekele\nProject: Addis Clinic");
+    expect(isPersonNameMatch(details.fullName, "Sara Bekele")).toBe(true);
+    expect(isProjectNameMatch(details.projectName, "Addis Clinic")).toBe(true);
+  });
+
   it("accepts invite links as metadata without treating them as chat IDs", () => {
     expect(parseTelegramGroupInput("https://t.me/+QOZbcLvBzdVjNGQ0")).toEqual({
       chatId: null,

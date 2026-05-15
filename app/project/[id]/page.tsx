@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertTriangle, Bot, Building2, FileText, Link2, MessageSquare, MoveUpRight, Sparkles } from "lucide-react";
+import { AlertTriangle, Bot, Building2, FileText, Link2, MessageSquare, MoveUpRight, Send, Sparkles } from "lucide-react";
 import { DesignViewer } from "@/components/ui/DesignViewer";
 import { FloorTimeline } from "@/components/ui/FloorTimeline";
 import { GlassPanel } from "@/components/ui/GlassPanel";
@@ -8,6 +8,7 @@ import { NeonButton } from "@/components/ui/NeonButton";
 import { ProjectActions } from "@/components/ui/ProjectActions";
 import { FLOOR_STATUS_LABELS, PROJECT_STATUS_LABELS } from "@/lib/constants";
 import { getProjectBundle } from "@/lib/data";
+import { getEnv } from "@/lib/env";
 import { formatDateTime } from "@/lib/utils";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -19,10 +20,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const selectedDesign = selectedFloor ? bundle.designs.find((design) => design.floor_id === selectedFloor.id) ?? null : null;
   const floorConversations = selectedFloor ? bundle.conversations.filter((item) => item.floor_id === selectedFloor.id || !item.floor_id) : bundle.conversations;
   const approved = bundle.floors.filter((floor) => floor.status === "approved").length;
-  const bindCommand = `/bind ${bundle.project.project_code ?? bundle.project.id.slice(0, 8).toUpperCase()}`;
-  const bindingStatus = bundle.project.group_chat_id
-    ? `Bound to ${bundle.project.telegram_group_title ?? bundle.project.group_chat_id}`
-    : "Waiting for group bind";
+  const botUsername = getEnv("TELEGRAM_BOT_USERNAME") ?? "awolaibot";
+  const botStartLink = `https://t.me/${botUsername}?start=${encodeURIComponent(bundle.project.project_code ?? bundle.project.id)}`;
   const failedJobs = bundle.jobs.filter((job) => job.status === "failed");
   const activeJobs = bundle.jobs.filter((job) => job.status === "pending" || job.status === "processing");
 
@@ -36,7 +35,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#c9b9a6]/54">Project Dossier</p>
                 <h1 className="mt-2 text-3xl font-semibold text-[#fffaf0]">{bundle.project.project_name}</h1>
                 <p className="mt-2 text-sm text-[#efe4d4]/64">
-                  {bundle.project.architect_name} - @{bundle.project.architect_telegram_username} - {bundle.project.building_purpose ?? "Purpose pending"}
+                  {bundle.project.architect_name} - {bundle.project.company_name ?? "Company pending"} - {bundle.project.building_purpose ?? "Purpose pending"}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -95,16 +94,16 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               <Link2 className="h-5 w-5 text-[#d6b17d]" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-[#fffaf0]">Telegram Group Binding</p>
-              <p className="mt-1 text-sm text-[#efe4d4]/62">{bindingStatus}</p>
-              {!bundle.project.group_chat_id ? (
-                <div className="mt-3 rounded border border-[#c6a171]/16 bg-white/[0.025] p-3">
-                  <p className="text-xs uppercase tracking-[0.1em] text-[#c9b9a6]/48">Send this in the Telegram group</p>
-                  <code className="mt-2 block select-all text-base font-semibold text-[#fffaf0]">{bindCommand}</code>
-                </div>
-              ) : (
-                <p className="mt-2 text-xs text-[#c9b9a6]/52">Outreach: {bundle.project.telegram_outreach_status ?? "bound"} - Group ID {bundle.project.group_chat_id}</p>
-              )}
+              <p className="text-sm font-semibold text-[#fffaf0]">Architect Bot Start</p>
+              <p className="mt-1 text-sm text-[#efe4d4]/62">Send this link to {bundle.project.architect_name}. The bot will verify full name and project name before continuing.</p>
+              <div className="mt-3 rounded border border-[#c6a171]/16 bg-white/[0.025] p-3">
+                <p className="text-xs uppercase tracking-[0.1em] text-[#c9b9a6]/48">Bot start link</p>
+                <code className="mt-2 block select-all break-all text-sm font-semibold text-[#fffaf0]">{botStartLink}</code>
+                <a href={botStartLink} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[#d6b17d] hover:text-[#fffaf0]">
+                  <Send className="h-4 w-4" />
+                  Open bot link
+                </a>
+              </div>
             </div>
           </div>
         </GlassPanel>

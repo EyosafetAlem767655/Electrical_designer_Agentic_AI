@@ -57,13 +57,13 @@ async function findProjectForVerification(fullName: string, projectName: string,
   const supabase = getSupabaseAdmin();
   const normalizedUsername = username ? normalizeTelegramUsername(username) : null;
   let query = supabase.from("projects").select("*").in("status", ["created", "awaiting_verification", "verified", "in_progress"]);
-  if (normalizedUsername) {
-    query = query.ilike("architect_telegram_username", `%${normalizedUsername}%`);
-  }
   const { data, error } = await query;
   if (error) throw error;
   return (
-    ((data ?? []) as Project[]).find((project) => isProjectNameMatch(projectName, project.project_name) && isPersonNameMatch(fullName, project.architect_name)) ??
+    ((data ?? []) as Project[]).find((project) => {
+      const usernameMatches = !project.architect_telegram_username || !normalizedUsername || normalizeTelegramUsername(project.architect_telegram_username) === normalizedUsername;
+      return usernameMatches && isProjectNameMatch(projectName, project.project_name) && isPersonNameMatch(fullName, project.architect_name);
+    }) ??
     null
   );
 }

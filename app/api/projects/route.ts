@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { makeProjectCode } from "@/lib/constants";
 import { getProjects } from "@/lib/data";
+import { getEnv } from "@/lib/env";
 import { getSupabaseAdmin, hasSupabaseServerEnv } from "@/lib/supabase";
 import { sendProjectInvite } from "@/lib/telegram";
 import { normalizeTelegramUsername, parseTelegramGroupInput } from "@/lib/utils";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 const createProjectSchema = z.object({
   projectName: z.string().min(2),
   architectName: z.string().min(2),
-  architectTelegramUsername: z.string().min(2),
+  architectTelegramUsername: z.string().optional().nullable(),
   companyName: z.string().optional(),
   buildingPurpose: z.string().optional(),
   groupChatId: z.union([z.string(), z.number()]).optional().nullable(),
@@ -20,6 +21,11 @@ const createProjectSchema = z.object({
   buildingAddress: z.string().optional(),
   notes: z.string().optional()
 });
+
+function botStartLink(projectCode?: string | null) {
+  const username = getEnv("TELEGRAM_BOT_USERNAME") ?? "awolaibot";
+  return `https://t.me/${username}${projectCode ? `?start=${encodeURIComponent(projectCode)}` : ""}`;
+}
 
 type ProjectInsert = {
   project_name: string;
@@ -75,11 +81,12 @@ export async function POST(request: Request) {
     const supabase = getSupabaseAdmin();
     const parsedGroup = parseTelegramGroupInput(input.groupChatId);
     const telegramInviteLink = input.telegramGroupInviteLink?.trim() || parsedGroup.inviteLink;
+    const architectTelegramUsername = input.architectTelegramUsername?.trim() ? normalizeTelegramUsername(input.architectTelegramUsername) : "";
     const { data: project, error } = await insertProject(supabase, {
       project_name: input.projectName,
       project_code: makeProjectCode(input.projectName),
       architect_name: input.architectName,
-      architect_telegram_username: normalizeTelegramUsername(input.architectTelegramUsername),
+      architect_telegram_username: architectTelegramUsername,
       company_name: input.companyName || null,
       building_purpose: input.buildingPurpose || null,
       building_address: input.buildingAddress || null,
@@ -92,9 +99,9 @@ export async function POST(request: Request) {
     if (error) throw error;
 
     let warning: string | null = null;
-    if (parsedGroup.chatId) {
+    if (parsedGroup.chatId && architectTelegramUsername) {
       try {
-        await sendProjectInvite(parsedGroup.chatId, input.architectTelegramUsername, input.architectName);
+        await sendProjectInvite(parsedGroup.chatId, architectTelegramUsername, input.architectName);
         await updateOutreachStatus(supabase, project.id, "invite_sent").catch(() => undefined);
       } catch (telegramError) {
         warning = telegramError instanceof Error ? telegramError.message : "Telegram outreach failed";
@@ -106,8 +113,9 @@ export async function POST(request: Request) {
       {
         ok: true,
         project,
+        botStartLink: botStartLink(project.project_code),
         bindCommand: `/bind ${project.project_code}`,
-        warning: warning ?? (!parsedGroup.chatId ? "Project created. Add the bot to the Telegram group, then send the bind command in that group." : null)
+        warning: warning ?? "Project created. Send the bot start link to the architect; the bot will verify full name and project name."
       },
       { status: 201 }
     );
