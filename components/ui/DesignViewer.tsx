@@ -33,14 +33,14 @@ export function DesignViewer({ design }: { design?: Design | null }) {
           </div>
         </div>
         <div className="relative aspect-[1.42] overflow-auto bg-[#edf4f2] p-4">
-          <div className="absolute left-4 top-4 z-10 rounded-full border border-[#2f8178]/16 bg-[#fffdf8]/90 px-3 py-1 text-xs font-semibold text-[#1f2a33]">A1 REVIEW PREVIEW</div>
+          <div className="absolute left-4 top-4 z-10 rounded-full border border-[#2f8178]/16 bg-[#f2eef8]/90 px-3 py-1 text-xs font-semibold text-[#1f2a33]">A1 REVIEW PREVIEW</div>
           <div className="relative h-full min-h-[360px] w-full origin-center transition" style={{ transform: `scale(${zoom})` }}>
             {design?.design_image_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={design.design_image_url} alt="Electrical design" className="h-full w-full object-contain" />
             ) : (
               <div className="grid h-full place-items-center border border-[#cbdeda] bg-[linear-gradient(90deg,#d7e6e3_1px,transparent_1px),linear-gradient(#d7e6e3_1px,transparent_1px)] bg-[size:28px_28px] text-[#1f2a33]">
-                <div className="rounded-[22px_10px_18px_12px] border border-[#1f2a33]/10 bg-[#fffdf8]/92 px-5 py-4 text-center shadow-sm">
+                <div className="rounded-[22px_10px_18px_12px] border border-[#1f2a33]/10 bg-[#f2eef8]/92 px-5 py-4 text-center shadow-sm">
                   <p className="text-lg font-semibold">Design artifact pending</p>
                   <p className="mt-1 text-xs text-[#687580]">AI-generated image and SVG annotations will appear here.</p>
                 </div>

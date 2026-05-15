@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f3ee;
+  --background: #e7e4f1;
   --foreground: #1f2a33;
   --font-rajdhani: "Aptos", "Segoe UI", Arial, sans-serif;
   --font-orbitron: "Aptos Display", "Segoe UI", Arial, sans-serif;
   --font-jetbrains: "Aptos", "Segoe UI", Arial, sans-serif;
-  --panel: rgba(255, 253, 248, 0.86);
-  --panel-strong: rgba(255, 253, 248, 0.96);
+  --panel: rgba(243, 239, 249, 0.86);
+  --panel-strong: rgba(247, 243, 252, 0.96);
   --line: rgba(31, 42, 51, 0.12);
   --accent: #2f8178;
   --accent-strong: #156a63;
-  --canvas: #fffdf8;
+  --canvas: #f2eef8;
   --muted: #687580;
   --plum: #6d5a87;
   --coral: #d66f61;
@@ -35,9 +35,9 @@ body {
   margin: 0;
   color: var(--foreground);
   background:
-    linear-gradient(115deg, rgba(47, 129, 120, 0.08), transparent 28%),
-    linear-gradient(245deg, rgba(214, 111, 97, 0.1), transparent 30%),
-    linear-gradient(180deg, #fbfaf7 0%, #f6f3ee 48%, #eceff0 100%);
+    linear-gradient(115deg, rgba(47, 129, 120, 0.1), transparent 30%),
+    linear-gradient(245deg, rgba(214, 111, 97, 0.12), transparent 32%),
+    linear-gradient(180deg, #ebe7f4 0%, #e7e4f1 46%, #dce8e4 100%);
   font-family: var(--font-rajdhani);
   letter-spacing: 0;
 }
@@ -73,7 +73,7 @@ select {
   position: relative;
   overflow: hidden;
   background:
-    linear-gradient(135deg, rgba(255, 253, 248, 0.96), rgba(245, 249, 248, 0.9)),
+    linear-gradient(135deg, rgba(247, 243, 252, 0.96), rgba(232, 241, 238, 0.9)),
     radial-gradient(circle at 10% 0%, rgba(47, 129, 120, 0.08), transparent 34%);
   border: 1px solid rgba(31, 42, 51, 0.1);
   border-radius: 26px 10px 22px 14px !important;
@@ -127,7 +127,7 @@ select {
     linear-gradient(145deg, rgba(47, 129, 120, 0.08), transparent 34%),
     linear-gradient(25deg, transparent 0 58%, rgba(109, 90, 135, 0.08) 58% 70%, transparent 70%),
     linear-gradient(175deg, transparent 0 68%, rgba(214, 111, 97, 0.08) 68% 69%, transparent 69%),
-    #f6f3ee;
+    #e7e4f1;
 }
 
 .studio-title {
@@ -148,7 +148,7 @@ select {
 
 .studio-surface {
   border: 1px solid rgba(31, 42, 51, 0.1);
-  background: rgba(255, 253, 248, 0.74);
+  background: rgba(247, 243, 252, 0.72);
   box-shadow: 0 18px 48px rgba(31, 42, 51, 0.07);
   backdrop-filter: blur(14px);
 }
@@ -160,7 +160,99 @@ select {
 .studio-pill {
   border-radius: 999px;
   border: 1px solid rgba(31, 42, 51, 0.1);
-  background: rgba(255, 253, 248, 0.64);
+  background: rgba(247, 243, 252, 0.68);
+}
+
+.studio-sticker {
+  width: min(220px, 42vw);
+  filter: drop-shadow(0 18px 26px rgba(31, 42, 51, 0.12));
+  transform-origin: center;
+  animation: sticker-float 7s ease-in-out infinite;
+}
+
+.studio-sticker svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.sticker-paper {
+  fill: #e9dff0;
+  stroke: rgba(31, 42, 51, 0.12);
+  stroke-width: 2;
+}
+
+.sticker-paper.teal {
+  fill: #d9ebe5;
+}
+
+.sticker-paper.plum {
+  fill: #e5e1f0;
+}
+
+.sticker-sheet {
+  fill: rgba(247, 243, 252, 0.92);
+  stroke: rgba(31, 42, 51, 0.3);
+  stroke-width: 2;
+}
+
+.sticker-line,
+.sticker-fold {
+  fill: none;
+  stroke: #2f8178;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 140;
+  stroke-dashoffset: 140;
+  animation: sticker-draw 4.8s ease-in-out infinite;
+}
+
+.sticker-line.delayed {
+  animation-delay: 0.35s;
+}
+
+.sticker-line.delayed-more {
+  animation-delay: 0.7s;
+}
+
+.sticker-accent {
+  fill: #d66f61;
+  stroke: rgba(31, 42, 51, 0.24);
+  stroke-width: 2;
+}
+
+.sticker-dot {
+  fill: #2f8178;
+}
+
+.sticker-dot.coral {
+  fill: #d66f61;
+}
+
+@keyframes sticker-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1.5deg);
+  }
+}
+
+@keyframes sticker-draw {
+  0% {
+    stroke-dashoffset: 140;
+    opacity: 0.35;
+  }
+  35%,
+  72% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: -140;
+    opacity: 0.45;
+  }
 }
 
 .neon-border {
@@ -243,7 +335,11 @@ select {
 [class*="bg-[#120d0a]"],
 [class*="bg-[#211812]"],
 [class*="bg-[#140f0c]"] {
-  background-color: rgba(255, 253, 248, 0.82) !important;
+  background-color: rgba(247, 243, 252, 0.82) !important;
+}
+
+[class*="bg-white"] {
+  background-color: rgba(247, 243, 252, 0.62) !important;
 }
 
 [class*="bg-[#6d4c34]"],
@@ -289,7 +385,7 @@ input,
 textarea,
 select {
   color: #1f2a33 !important;
-  background: rgba(255, 253, 248, 0.82) !important;
+  background: rgba(247, 243, 252, 0.86) !important;
 }
 
 input::placeholder,

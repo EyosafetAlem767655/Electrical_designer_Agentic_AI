@@ -10,7 +10,7 @@ const nav = [
 
 export function Sidebar() {
   return (
-    <aside className="hidden w-64 shrink-0 border-r border-[#1f2a33]/10 bg-[#fffdf8]/72 px-4 py-5 backdrop-blur-xl lg:block">
+    <aside className="hidden w-64 shrink-0 border-r border-[#1f2a33]/10 bg-[#f2eef8]/72 px-4 py-5 backdrop-blur-xl lg:block">
       <div className="mb-8 border-b border-[#1f2a33]/10 pb-5">
         <div className="flex items-center gap-3">
           <div className="grid h-10 w-10 place-items-center rounded-full border border-[#2f8178]/18 bg-[#2f8178]/10">

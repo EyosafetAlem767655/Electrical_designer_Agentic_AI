@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight, Bot, CheckCircle2, ClipboardList, FileCheck2, FolderPlus, MessageSquare, TimerReset, type LucideIcon } from "lucide-react";
 import { NeonButton } from "@/components/ui/NeonButton";
 import { StatusPulse } from "@/components/ui/StatusPulse";
+import { StudioSticker } from "@/components/ui/StudioSticker";
 import { PROJECT_STATUS_LABELS } from "@/lib/constants";
 import { getProjects } from "@/lib/data";
 import { formatDateTime } from "@/lib/utils";
@@ -34,8 +35,7 @@ export default async function CommandCenterPage() {
     <div className="space-y-10">
       <section className="grid min-h-[520px] gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="studio-surface studio-organic relative overflow-hidden p-8 sm:p-10">
-          <div className="absolute -right-14 top-12 h-52 w-52 rotate-12 rounded-[42%_58%_60%_40%] bg-[#2f8178]/10" />
-          <div className="absolute bottom-10 right-24 h-28 w-44 -rotate-6 rounded-[60%_40%_35%_65%] bg-[#d66f61]/12" />
+          <StudioSticker kind="drafting" className="absolute -right-4 bottom-4 hidden opacity-95 lg:block" />
           <div className="relative max-w-3xl">
             <p className="studio-eyebrow">Elec Nova Tech AI</p>
             <h1 className="studio-title mt-5">Electrical design, composed like a studio workflow.</h1>
@@ -77,6 +77,7 @@ export default async function CommandCenterPage() {
           </div>
 
           <div className="studio-surface rounded-[32px_12px_26px_16px] p-6">
+            <StudioSticker kind="handoff" className="float-right -mr-2 -mt-2 w-28 opacity-90" />
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="studio-eyebrow">Current Brief</p>
@@ -162,6 +163,7 @@ export default async function CommandCenterPage() {
 
         <aside className="space-y-4">
           <div className="studio-surface rounded-[34px_12px_28px_18px] p-6">
+            <StudioSticker kind="package" className="float-right -mr-3 -mt-4 w-28 opacity-85" />
             <p className="studio-eyebrow">Workflow</p>
             <div className="mt-5 space-y-4">
               {queue.map(({ title, copy, icon: Icon }, index) => (
