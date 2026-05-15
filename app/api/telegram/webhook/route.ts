@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleTelegramUpdate } from "@/lib/bot";
+import { getEnv } from "@/lib/env";
 import type { TelegramUpdate } from "@/lib/telegram";
 
 export const runtime = "nodejs";
@@ -11,6 +12,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const secret = getEnv("TELEGRAM_WEBHOOK_SECRET");
+    if (secret && request.headers.get("x-telegram-bot-api-secret-token") !== secret) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const update = (await request.json()) as TelegramUpdate;
     const result = await handleTelegramUpdate(update);
     return NextResponse.json(result);

@@ -44,10 +44,11 @@ export async function telegramApi<T>(method: string, body?: Record<string, unkno
   return payload.result as T;
 }
 
-export async function setTelegramWebhook(url: string) {
+export async function setTelegramWebhook(url: string, secretToken?: string) {
   return telegramApi<true>("setWebhook", {
     url,
-    allowed_updates: ["message"]
+    allowed_updates: ["message"],
+    ...(secretToken ? { secret_token: secretToken } : {})
   });
 }
 
@@ -55,12 +56,12 @@ export async function getTelegramWebhookInfo() {
   return telegramApi<TelegramWebhookInfo>("getWebhookInfo");
 }
 
-export async function ensureTelegramWebhook(url: string) {
+export async function ensureTelegramWebhook(url: string, secretToken?: string) {
   const info = await getTelegramWebhookInfo();
   if (info.url === url) {
     return { changed: false, webhook: info };
   }
-  await setTelegramWebhook(url);
+  await setTelegramWebhook(url, secretToken);
   return { changed: true, webhook: await getTelegramWebhookInfo() };
 }
 

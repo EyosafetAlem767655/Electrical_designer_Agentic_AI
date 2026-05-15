@@ -11,6 +11,33 @@ export function requireEnv(name: string): string {
   return value;
 }
 
+function normalizeBaseUrl(value: string) {
+  const trimmed = value.trim().replace(/\/$/, "");
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 export function getBaseUrl() {
-  return getEnv("TELEGRAM_WEBHOOK_BASE_URL") ?? "http://localhost:3000";
+  const configuredUrl =
+    getEnv("TELEGRAM_WEBHOOK_BASE_URL") ??
+    getEnv("NEXT_PUBLIC_APP_URL") ??
+    getEnv("VERCEL_PROJECT_PRODUCTION_URL") ??
+    getEnv("VERCEL_URL");
+
+  return configuredUrl ? normalizeBaseUrl(configuredUrl) : "http://localhost:3000";
+}
+
+export function getRequestBaseUrl(request: Request) {
+  const configuredUrl = getEnv("TELEGRAM_WEBHOOK_BASE_URL") ?? getEnv("NEXT_PUBLIC_APP_URL");
+  if (configuredUrl) return normalizeBaseUrl(configuredUrl);
+
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = forwardedHost ?? request.headers.get("host");
+  if (host) {
+    const forwardedProto = request.headers.get("x-forwarded-proto");
+    const protocol = forwardedProto ?? (host.includes("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+    return `${protocol}://${host}`.replace(/\/$/, "");
+  }
+
+  return getBaseUrl();
 }

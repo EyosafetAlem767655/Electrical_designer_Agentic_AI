@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBaseUrl, getEnv } from "@/lib/env";
+import { getEnv, getRequestBaseUrl } from "@/lib/env";
 import { getTelegramWebhookInfo, setTelegramWebhook } from "@/lib/telegram";
 
 export const runtime = "nodejs";
@@ -13,8 +13,26 @@ function authorized(request: Request) {
   return setupHeader === secret || authHeader === `Bearer ${secret}`;
 }
 
-function webhookUrl() {
-  return `${getBaseUrl().replace(/\/$/, "")}/api/telegram/webhook`;
+function webhookUrl(request: Request) {
+  return `${getRequestBaseUrl(request)}/api/telegram/webhook`;
+}
+
+function webhookSecret() {
+  return getEnv("TELEGRAM_WEBHOOK_SECRET");
+}
+
+function setupStatus(request: Request, webhook: Awaited<ReturnType<typeof getTelegramWebhookInfo>>) {
+  const expectedUrl = webhookUrl(request);
+  return {
+    expectedUrl,
+    registeredUrl: webhook.url || null,
+    isRegistered: webhook.url === expectedUrl,
+    needsRegistration: webhook.url !== expectedUrl,
+    hasBotToken: Boolean(getEnv("TELEGRAM_BOT_TOKEN")),
+    hasSetupSecret: Boolean(getEnv("TELEGRAM_SETUP_SECRET") ?? getEnv("JOB_SECRET") ?? getEnv("CRON_SECRET")),
+    hasWebhookSecret: Boolean(webhookSecret()),
+    webhook
+  };
 }
 
 export async function GET(request: Request) {
@@ -24,7 +42,7 @@ export async function GET(request: Request) {
 
   try {
     const info = await getTelegramWebhookInfo();
-    return NextResponse.json({ ok: true, expectedUrl: webhookUrl(), webhook: info });
+    return NextResponse.json({ ok: true, ...setupStatus(request, info) });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Failed to read Telegram webhook" }, { status: 500 });
   }
@@ -36,10 +54,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const url = webhookUrl();
-    await setTelegramWebhook(url);
+    const url = webhookUrl(request);
+    await setTelegramWebhook(url, webhookSecret());
     const info = await getTelegramWebhookInfo();
-    return NextResponse.json({ ok: true, url, webhook: info });
+    return NextResponse.json({ ok: true, url, ...setupStatus(request, info) });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Failed to register Telegram webhook" }, { status: 500 });
   }

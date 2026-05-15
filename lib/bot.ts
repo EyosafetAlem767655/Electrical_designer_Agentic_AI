@@ -56,7 +56,7 @@ async function updateSession(sessionId: string, values: Partial<BotSession>) {
 async function findProjectForVerification(fullName: string, projectName: string, username?: string | null, projectHint?: string | null) {
   const supabase = getSupabaseAdmin();
   const normalizedUsername = username ? normalizeTelegramUsername(username) : null;
-  let query = supabase.from("projects").select("*").in("status", ["created", "awaiting_verification", "verified", "in_progress"]);
+  const query = supabase.from("projects").select("*").in("status", ["created", "awaiting_verification", "verified", "in_progress"]);
   const { data, error } = await query;
   if (error) throw error;
   return (

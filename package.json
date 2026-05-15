@@ -6,8 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run",
+    "test:e2e": "node scripts/run-playwright.mjs",
+    "verify": "node scripts/verify.mjs",
+    "prepare": "husky",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -26,12 +30,14 @@
     "zod": "^4.2.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "^24.10.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.184.1",
     "eslint": "^9.39.2",
     "eslint-config-next": "^16.0.10",
+    "husky": "^9.1.7",
     "typescript": "^5.9.3",
     "vitest": "^4.0.15"
   }

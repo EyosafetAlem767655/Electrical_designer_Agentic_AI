@@ -15,6 +15,8 @@ Agentic electrical design dashboard and Telegram intake system for floor-by-floo
 
 ## Webhook
 
+You can register and inspect the Telegram webhook from the dashboard at `/telegram`.
+
 Register Telegram webhook after deployment from the app:
 
 ```bash
@@ -28,6 +30,8 @@ Check current webhook status:
 curl "$TELEGRAM_WEBHOOK_BASE_URL/api/telegram/setup" \
   -H "x-setup-secret: $TELEGRAM_SETUP_SECRET"
 ```
+
+If `TELEGRAM_WEBHOOK_BASE_URL` is not configured, `/api/telegram/setup` derives the webhook origin from the incoming request headers, including Vercel's forwarded host/protocol headers.
 
 Or register directly with Telegram:
 
@@ -52,3 +56,17 @@ Optional group binding is still supported with `/bind PROJECT_CODE`, but Telegra
 ## Notes
 
 This v1 intentionally has no admin authentication. Do not expose it publicly until an auth gate is added.
+
+## Testing
+
+Run the local verification suite before pushing changes:
+
+```bash
+npm.cmd run verify
+```
+
+The suite runs lint, unit tests, production build, and Playwright smoke tests. A Husky pre-commit hook runs the same command when the local hooks are installed with:
+
+```bash
+npm.cmd run prepare
+```

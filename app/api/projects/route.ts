@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { makeProjectCode } from "@/lib/constants";
 import { getProjects } from "@/lib/data";
-import { getBaseUrl, getEnv } from "@/lib/env";
+import { getEnv, getRequestBaseUrl } from "@/lib/env";
 import { getSupabaseAdmin, hasSupabaseServerEnv } from "@/lib/supabase";
 import { ensureTelegramWebhook, sendProjectInvite } from "@/lib/telegram";
 import { normalizeTelegramUsername, parseTelegramGroupInput } from "@/lib/utils";
@@ -54,7 +54,9 @@ async function insertProject(supabase: ReturnType<typeof getSupabaseAdmin>, row:
     return result;
   }
 
-  const { telegram_group_invite_link: _inviteLink, telegram_outreach_status: _outreachStatus, ...legacyRow } = row;
+  const legacyRow: Record<string, unknown> = { ...row };
+  delete legacyRow.telegram_group_invite_link;
+  delete legacyRow.telegram_outreach_status;
   const retry = await insert(legacyRow);
   if (!retry.error) return retry;
 
@@ -77,16 +79,16 @@ async function updateOutreachStatus(supabase: ReturnType<typeof getSupabaseAdmin
   await supabase.from("projects").update({ telegram_outreach_status: status }).eq("id", projectId);
 }
 
-function webhookUrl() {
-  return `${getBaseUrl().replace(/\/$/, "")}/api/telegram/webhook`;
+function webhookUrl(request: Request) {
+  return `${getRequestBaseUrl(request)}/api/telegram/webhook`;
 }
 
-async function ensureWebhookIfPossible() {
+async function ensureWebhookIfPossible(request: Request) {
   if (!getEnv("TELEGRAM_BOT_TOKEN")) {
     return { ok: false, warning: "TELEGRAM_BOT_TOKEN is missing, so the bot webhook could not be registered." };
   }
   try {
-    return { ok: true, result: await ensureTelegramWebhook(webhookUrl()) };
+    return { ok: true, result: await ensureTelegramWebhook(webhookUrl(request), getEnv("TELEGRAM_WEBHOOK_SECRET")) };
   } catch (error) {
     return { ok: false, warning: error instanceof Error ? error.message : "Telegram webhook registration failed." };
   }
@@ -122,7 +124,7 @@ export async function POST(request: Request) {
     }
 
     const input = createProjectSchema.parse(await request.json());
-    const webhook = await ensureWebhookIfPossible();
+    const webhook = await ensureWebhookIfPossible(request);
     const supabase = getSupabaseAdmin();
     const parsedGroup = parseTelegramGroupInput(input.groupChatId);
     const telegramInviteLink = input.telegramGroupInviteLink?.trim() || parsedGroup.inviteLink;

@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Bot, FolderPlus, Gauge, MessageSquare, Workflow } from "lucide-react";
+import { Bot, FolderPlus, Gauge, MessageSquare, Send, Workflow } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Command", icon: Gauge },
   { href: "/project/new", label: "New Project", icon: FolderPlus },
+  { href: "/telegram", label: "Telegram", icon: Send },
   { href: "/project/demo-project/chat", label: "AI Chat", icon: MessageSquare },
   { href: "/api/jobs/process", label: "Jobs", icon: Workflow }
 ];

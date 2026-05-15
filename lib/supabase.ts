@@ -5,7 +5,10 @@ let adminClient: SupabaseClient | null = null;
 let publicClient: SupabaseClient | null = null;
 
 export function hasSupabaseServerEnv() {
-  return Boolean(getEnv("SUPABASE_URL") && (getEnv("SUPABASE_SERVICE_ROLE_KEY") || getEnv("SUPABASE_ANON_KEY")));
+  return Boolean(
+    (getEnv("SUPABASE_URL") || getEnv("NEXT_PUBLIC_SUPABASE_URL")) &&
+      (getEnv("SUPABASE_SERVICE_ROLE_KEY") || getEnv("SUPABASE_ANON_KEY") || getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"))
+  );
 }
 
 export function hasSupabaseBrowserEnv() {
@@ -14,8 +17,8 @@ export function hasSupabaseBrowserEnv() {
 
 export function getSupabaseAdmin() {
   if (!adminClient) {
-    const url = requireEnv("SUPABASE_URL");
-    const key = getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? requireEnv("SUPABASE_ANON_KEY");
+    const url = getEnv("SUPABASE_URL") ?? requireEnv("NEXT_PUBLIC_SUPABASE_URL");
+    const key = getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? getEnv("SUPABASE_ANON_KEY") ?? requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
     adminClient = createClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false }
     });
