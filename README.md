@@ -13,6 +13,12 @@ Agentic electrical design dashboard and Telegram intake system for floor-by-floo
 7. Set `JOB_SECRET` and `CRON_SECRET` to the same strong value in production. The app triggers queued jobs when they are created, and the Hobby-compatible daily cron is only a fallback.
 8. Run `npm.cmd run dev`.
 
+## Environment Notes
+
+Vercel environment variable names are case-sensitive. Use `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_BASE_URL` as the primary Telegram values. `INSTALLER_TELEGRAM_BOT_TOKEN`, `INSTALLER_WEBHOOK_BASE_URL`, and `ORCHESTRATOR_URL` are supported fallbacks, but the primary names are preferred.
+
+After adding or changing Vercel environment variables, redeploy the project so runtime functions receive the new values.
+
 ## Webhook
 
 You can register and inspect the Telegram webhook from the dashboard at `/telegram`.
@@ -32,6 +38,8 @@ curl "$TELEGRAM_WEBHOOK_BASE_URL/api/telegram/setup" \
 ```
 
 If `TELEGRAM_WEBHOOK_BASE_URL` is not configured, `/api/telegram/setup` derives the webhook origin from the incoming request headers, including Vercel's forwarded host/protocol headers.
+
+The webhook endpoint returns readiness details from `GET /api/telegram/webhook`. If Telegram reports a previous `500 Internal Server Error`, redeploy this version and press Register Webhook again from `/telegram`.
 
 Or register directly with Telegram:
 
@@ -58,6 +66,8 @@ Optional group binding is still supported with `/bind PROJECT_CODE`, but Telegra
 This v1 intentionally has no admin authentication. Do not expose it publicly until an auth gate is added.
 
 ## Testing
+
+GitHub Actions runs the same verification suite on every push and pull request through `.github/workflows/verify.yml`.
 
 Run the local verification suite before pushing changes:
 

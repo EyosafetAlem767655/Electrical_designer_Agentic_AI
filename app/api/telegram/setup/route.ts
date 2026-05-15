@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getEnv, getRequestBaseUrl } from "@/lib/env";
+import { hasSupabaseServerEnv } from "@/lib/supabase";
 import { getTelegramWebhookInfo, setTelegramWebhook } from "@/lib/telegram";
 
 export const runtime = "nodejs";
@@ -29,8 +30,11 @@ function setupStatus(request: Request, webhook: Awaited<ReturnType<typeof getTel
     isRegistered: webhook.url === expectedUrl,
     needsRegistration: webhook.url !== expectedUrl,
     hasBotToken: Boolean(getEnv("TELEGRAM_BOT_TOKEN")),
+    hasInstallerBotToken: Boolean(getEnv("INSTALLER_TELEGRAM_BOT_TOKEN")),
     hasSetupSecret: Boolean(getEnv("TELEGRAM_SETUP_SECRET") ?? getEnv("JOB_SECRET") ?? getEnv("CRON_SECRET")),
     hasWebhookSecret: Boolean(webhookSecret()),
+    hasSupabaseServerEnv: hasSupabaseServerEnv(),
+    webhookEndpoint: `${expectedUrl.replace(/\/$/, "")}`,
     webhook
   };
 }

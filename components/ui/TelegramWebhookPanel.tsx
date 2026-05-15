@@ -11,8 +11,10 @@ type WebhookStatus = {
   isRegistered?: boolean;
   needsRegistration?: boolean;
   hasBotToken?: boolean;
+  hasInstallerBotToken?: boolean;
   hasSetupSecret?: boolean;
   hasWebhookSecret?: boolean;
+  hasSupabaseServerEnv?: boolean;
   webhook?: {
     pending_update_count?: number;
     last_error_message?: string;
@@ -77,6 +79,8 @@ export function TelegramWebhookPanel() {
           <div className="grid gap-3 md:grid-cols-4">
             {[
               ["Bot token", status.hasBotToken ? "Present" : "Missing"],
+              ["Fallback bot token", status.hasInstallerBotToken ? "Present" : "Not set"],
+              ["Supabase env", status.hasSupabaseServerEnv ? "Present" : "Missing"],
               ["Setup secret", status.hasSetupSecret ? "Present" : "Not set"],
               ["Webhook secret", status.hasWebhookSecret ? "Present" : "Not set"],
               ["Pending updates", String(status.webhook?.pending_update_count ?? 0)]

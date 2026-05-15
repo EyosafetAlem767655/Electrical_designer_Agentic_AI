@@ -3,6 +3,8 @@ import { GlassPanel } from "@/components/ui/GlassPanel";
 import { TelegramWebhookPanel } from "@/components/ui/TelegramWebhookPanel";
 import { getBaseUrl, getEnv } from "@/lib/env";
 
+export const dynamic = "force-dynamic";
+
 export default function TelegramSetupPage() {
   const baseUrl = getBaseUrl();
   const setupSecretConfigured = Boolean(getEnv("TELEGRAM_SETUP_SECRET") ?? getEnv("JOB_SECRET") ?? getEnv("CRON_SECRET"));

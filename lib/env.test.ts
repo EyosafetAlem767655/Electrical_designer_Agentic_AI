@@ -15,8 +15,16 @@ describe("environment URL helpers", () => {
 
   it("falls back to Vercel URL with https", () => {
     delete process.env.TELEGRAM_WEBHOOK_BASE_URL;
+    delete process.env.ORCHESTRATOR_URL;
     process.env.VERCEL_URL = "elec-nova.vercel.app";
     expect(getBaseUrl()).toBe("https://elec-nova.vercel.app");
+  });
+
+  it("uses orchestrator URL before Vercel URL", () => {
+    delete process.env.TELEGRAM_WEBHOOK_BASE_URL;
+    process.env.ORCHESTRATOR_URL = "https://orchestrator.example.com/";
+    process.env.VERCEL_URL = "elec-nova.vercel.app";
+    expect(getBaseUrl()).toBe("https://orchestrator.example.com");
   });
 
   it("derives request origin from forwarded Vercel headers", () => {

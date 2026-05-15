@@ -1,4 +1,4 @@
-import { getEnv, requireEnv } from "@/lib/env";
+import { getEnv } from "@/lib/env";
 import { normalizeTelegramUsername } from "@/lib/utils";
 
 export type TelegramMessage = {
@@ -26,7 +26,11 @@ export type TelegramWebhookInfo = {
 };
 
 function telegramToken() {
-  return requireEnv("TELEGRAM_BOT_TOKEN");
+  const token = getEnv("TELEGRAM_BOT_TOKEN") ?? getEnv("INSTALLER_TELEGRAM_BOT_TOKEN");
+  if (!token) {
+    throw new Error("Missing required environment variable: TELEGRAM_BOT_TOKEN");
+  }
+  return token;
 }
 
 export async function telegramApi<T>(method: string, body?: Record<string, unknown>): Promise<T> {

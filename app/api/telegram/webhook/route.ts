@@ -1,13 +1,23 @@
 import { NextResponse } from "next/server";
 import { handleTelegramUpdate } from "@/lib/bot";
 import { getEnv } from "@/lib/env";
+import { hasSupabaseServerEnv } from "@/lib/supabase";
 import type { TelegramUpdate } from "@/lib/telegram";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({ ok: true, route: "telegram-webhook", message: "Telegram webhook endpoint is alive. Telegram sends updates with POST." });
+  return NextResponse.json({
+    ok: true,
+    route: "telegram-webhook",
+    message: "Telegram webhook endpoint is alive. Telegram sends updates with POST.",
+    readiness: {
+      hasTelegramBotToken: Boolean(getEnv("TELEGRAM_BOT_TOKEN") ?? getEnv("INSTALLER_TELEGRAM_BOT_TOKEN")),
+      hasSupabaseServerEnv: hasSupabaseServerEnv(),
+      hasWebhookSecret: Boolean(getEnv("TELEGRAM_WEBHOOK_SECRET"))
+    }
+  });
 }
 
 export async function POST(request: Request) {
@@ -22,6 +32,10 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("Telegram webhook error", error);
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Webhook failed" }, { status: 500 });
+    return NextResponse.json({
+      ok: false,
+      handled: false,
+      error: error instanceof Error ? error.message : "Webhook failed"
+    });
   }
 }

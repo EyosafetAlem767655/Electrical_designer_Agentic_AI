@@ -6,7 +6,10 @@ import { RealtimeRefresher } from "@/components/ui/RealtimeRefresher";
 
 export const metadata: Metadata = {
   title: "Elec Nova Tech AI",
-  description: "Agentic AI electrical design command center"
+  description: "Agentic AI electrical design command center",
+  icons: {
+    icon: "/icon.svg"
+  }
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

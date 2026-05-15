@@ -20,6 +20,9 @@ function normalizeBaseUrl(value: string) {
 export function getBaseUrl() {
   const configuredUrl =
     getEnv("TELEGRAM_WEBHOOK_BASE_URL") ??
+    getEnv("Installer_webhook_base_URL") ??
+    getEnv("INSTALLER_WEBHOOK_BASE_URL") ??
+    getEnv("ORCHESTRATOR_URL") ??
     getEnv("NEXT_PUBLIC_APP_URL") ??
     getEnv("VERCEL_PROJECT_PRODUCTION_URL") ??
     getEnv("VERCEL_URL");
@@ -28,7 +31,12 @@ export function getBaseUrl() {
 }
 
 export function getRequestBaseUrl(request: Request) {
-  const configuredUrl = getEnv("TELEGRAM_WEBHOOK_BASE_URL") ?? getEnv("NEXT_PUBLIC_APP_URL");
+  const configuredUrl =
+    getEnv("TELEGRAM_WEBHOOK_BASE_URL") ??
+    getEnv("Installer_webhook_base_URL") ??
+    getEnv("INSTALLER_WEBHOOK_BASE_URL") ??
+    getEnv("ORCHESTRATOR_URL") ??
+    getEnv("NEXT_PUBLIC_APP_URL");
   if (configuredUrl) return normalizeBaseUrl(configuredUrl);
 
   const forwardedHost = request.headers.get("x-forwarded-host");
