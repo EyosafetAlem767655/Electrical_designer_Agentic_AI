@@ -23,6 +23,8 @@ After adding or changing Vercel environment variables, redeploy the project so r
 
 You can register and inspect the Telegram webhook from the dashboard at `/telegram`.
 
+If `TELEGRAM_SETUP_SECRET`, `JOB_SECRET`, or `CRON_SECRET` is configured, enter that value in the setup secret field on `/telegram` before pressing Check Status or Register Webhook.
+
 Register Telegram webhook after deployment from the app:
 
 ```bash

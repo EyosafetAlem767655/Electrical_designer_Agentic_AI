@@ -25,11 +25,13 @@ type WebhookStatus = {
 
 export function TelegramWebhookPanel() {
   const [status, setStatus] = useState<WebhookStatus | null>(null);
+  const [setupSecret, setSetupSecret] = useState("");
   const [busy, setBusy] = useState<"check" | "register" | null>(null);
 
   async function callSetup(method: "GET" | "POST") {
     setBusy(method === "GET" ? "check" : "register");
-    const response = await fetch("/api/telegram/setup", { method, cache: "no-store" });
+    const headers = setupSecret.trim() ? { "x-setup-secret": setupSecret.trim() } : undefined;
+    const response = await fetch("/api/telegram/setup", { method, headers, cache: "no-store" });
     const payload = (await response.json().catch(() => ({ ok: false, error: "Invalid JSON response" }))) as WebhookStatus;
     setStatus(payload);
     setBusy(null);
@@ -56,6 +58,17 @@ export function TelegramWebhookPanel() {
         </div>
       </div>
 
+      <label className="mt-5 block max-w-xl">
+        <span className="text-xs font-medium text-[#c9b9a6]/62">Setup secret</span>
+        <input
+          value={setupSecret}
+          onChange={(event) => setSetupSecret(event.target.value)}
+          className="mt-2 h-11 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58"
+          placeholder="Enter TELEGRAM_SETUP_SECRET, JOB_SECRET, or CRON_SECRET if configured"
+          type="password"
+        />
+      </label>
+
       {busy ? <p className="mt-4 text-sm text-[#efe4d4]/62">Telegram setup request is running...</p> : null}
 
       {status ? (
@@ -63,6 +76,11 @@ export function TelegramWebhookPanel() {
           <div className={status.ok ? "rounded border border-[#8fa37c]/28 bg-[#8fa37c]/10 p-3" : "rounded border border-rose-300/30 bg-rose-500/10 p-3"}>
             <p className="text-sm font-semibold text-[#fffaf0]">{status.ok ? (status.isRegistered ? "Webhook registered" : "Webhook needs registration") : "Webhook check failed"}</p>
             {status.error ? <p className="mt-1 text-sm text-rose-100/80">{status.error}</p> : null}
+            {status.error === "Unauthorized" ? (
+              <p className="mt-2 text-xs leading-5 text-rose-100/70">
+                Enter the configured setup secret above. The API accepts `TELEGRAM_SETUP_SECRET`, `JOB_SECRET`, or `CRON_SECRET`.
+              </p>
+            ) : null}
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
