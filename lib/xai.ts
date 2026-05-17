@@ -10,6 +10,9 @@ type XaiChatResponse = {
   choices?: Array<{ message?: { content?: string } }>;
 };
 
+const IMAGE_PROMPT_LIMIT = 8000;
+const IMAGE_PROMPT_TARGET = 7200;
+
 function model(name: string, fallback: string) {
   return getEnv(name) ?? fallback;
 }
@@ -60,6 +63,44 @@ function extractJson<T>(text: string, fallback: T): T {
     }
     return fallback;
   }
+}
+
+function limitText(value: unknown, maxLength: number) {
+  const text = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 16)}... [truncated]`;
+}
+
+function compactList(value: unknown, maxItems = 8) {
+  if (!Array.isArray(value)) return value ?? [];
+  return value.slice(0, maxItems);
+}
+
+function compactRequirements(requirements: Record<string, unknown>) {
+  const analysis = (requirements.ai_analysis && typeof requirements.ai_analysis === "object" ? requirements.ai_analysis : {}) as Record<string, unknown>;
+  return {
+    special_requirements: limitText(requirements.special_requirements, 700),
+    architect_answers: limitText(requirements.architect_answers, 900),
+    improvement_request: limitText(requirements.improvement_request, 700),
+    rooms: compactList(analysis.rooms, 20),
+    load_assumptions: compactList(analysis.load_assumptions),
+    lighting_plan: compactList(analysis.lighting_plan, 20),
+    socket_outlet_plan: compactList(analysis.socket_outlet_plan, 20),
+    switch_plan: compactList(analysis.switch_plan, 20),
+    db_recommendation: limitText(analysis.db_recommendation, 500),
+    circuit_strategy: limitText(analysis.circuit_strategy, 900),
+    cable_route_strategy: limitText(analysis.cable_route_strategy, 900),
+    emergency_systems: compactList(analysis.emergency_systems),
+    fire_alarm_plan: compactList(analysis.fire_alarm_plan),
+    data_cctv_plan: compactList(analysis.data_cctv_plan),
+    unclear_items: compactList(analysis.unclear_items),
+    electrician_notes: compactList(analysis.electrician_notes, 10)
+  };
+}
+
+function clampPrompt(prompt: string) {
+  if (prompt.length <= IMAGE_PROMPT_LIMIT) return prompt;
+  return `${prompt.slice(0, IMAGE_PROMPT_TARGET)}\n\n[Context truncated to stay within xAI image prompt limit. Preserve full engineering intent: practical lighting in every room/section, socket outlets in usable rooms, clear switches, DB, circuit numbers, wiring routes, legend, and readable labels.]`;
 }
 
 export async function chatCompletion(messages: ChatMessage[], temperature = 0.5) {
@@ -147,6 +188,7 @@ async function createDesignPlan(context: {
   buildingPurpose?: string | null;
   requirements: Record<string, unknown>;
 }) {
+  const requirements = compactRequirements(context.requirements);
   return chatCompletion(
     [
       { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
@@ -164,7 +206,7 @@ async function createDesignPlan(context: {
 Project: ${context.projectName}
 Floor: ${context.floorName}
 Building purpose: ${context.buildingPurpose ?? "not specified"}
-Requirements and analysis: ${JSON.stringify(context.requirements)}`
+Requirements and analysis: ${JSON.stringify(requirements)}`
       }
     ],
     0.2
@@ -214,13 +256,14 @@ export async function generateDesignImage(context: {
   sourceImageUrl?: string | null;
   requirements: Record<string, unknown>;
 }) {
+  const compactedRequirements = compactRequirements(context.requirements);
   const designPlan = await createDesignPlan({
     projectName: context.projectName,
     floorName: context.floorName,
     buildingPurpose: context.buildingPurpose,
-    requirements: context.requirements
+    requirements: compactedRequirements
   });
-  const prompt = `${context.sourceImageUrl ? "Edit the provided architectural floor-plan image. Preserve the original plan geometry, walls, doors, room labels, dimensions, and scale. Draw the electrical design directly on top of this same plan." : "Create a professional electrical installation design drawing for this architectural plan."}
+  const prompt = clampPrompt(`${context.sourceImageUrl ? "Edit the provided architectural floor-plan image. Preserve the original plan geometry, walls, doors, room labels, dimensions, and scale. Draw the electrical design directly on top of this same plan." : "Create a professional electrical installation design drawing for this architectural plan."}
 
 Project: ${context.projectName}
 Floor: ${context.floorName}
@@ -240,10 +283,10 @@ Overlay requirements:
 - Do not invent a different building layout or redraw the architecture from scratch.
 
 Prepared engineering drawing plan:
-${designPlan}
+${limitText(designPlan, 1800)}
 
-Specific requirements and analysis:
-${JSON.stringify(context.requirements, null, 2)}`;
+Compacted requirements and analysis:
+${limitText(compactedRequirements, 2200)}`);
 
   const modelName = model("XAI_IMAGE_MODEL", "grok-imagine-image-quality");
   const payload = context.sourceImageUrl
