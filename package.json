@@ -15,6 +15,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.0",
     "@react-three/fiber": "^9.4.0",
     "@supabase/supabase-js": "^2.87.1",
     "@tailwindcss/postcss": "^4.1.18",

@@ -4,7 +4,25 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Design, Floor, Project } from "@/types";
 
+async function ensurePdfCanvasPolyfills() {
+  const canvas = (await import("@napi-rs/canvas")) as unknown as {
+    DOMMatrix?: typeof DOMMatrix;
+    ImageData?: typeof ImageData;
+    Path2D?: typeof Path2D;
+  };
+  const target = globalThis as typeof globalThis & {
+    DOMMatrix?: typeof DOMMatrix;
+    ImageData?: typeof ImageData;
+    Path2D?: typeof Path2D;
+  };
+
+  if (!target.DOMMatrix && canvas.DOMMatrix) target.DOMMatrix = canvas.DOMMatrix;
+  if (!target.ImageData && canvas.ImageData) target.ImageData = canvas.ImageData;
+  if (!target.Path2D && canvas.Path2D) target.Path2D = canvas.Path2D;
+}
+
 export async function convertPdfToPngPages(pdfBuffer: Buffer) {
+  await ensurePdfCanvasPolyfills();
   const { pdf } = await import("pdf-to-img");
   const tmpPath = join(tmpdir(), `elec-nova-${Date.now()}-${Math.random().toString(16).slice(2)}.pdf`);
   await writeFile(tmpPath, pdfBuffer);

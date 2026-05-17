@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "x.ai" }
     ]
   },
-  serverExternalPackages: ["pdf-to-img"]
+  serverExternalPackages: ["pdf-to-img", "@napi-rs/canvas"]
 };
 
 export default nextConfig;
