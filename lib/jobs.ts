@@ -4,7 +4,7 @@ import { convertPdfToPngPages, createFloorPdf, createProjectPackagePdf } from "@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
-import { analyzeFloorPlan, fallbackAnnotations, generateDesignImage, generateQuestions, normalizeLegend } from "@/lib/xai";
+import { analyzeFloorPlan, fallbackAnnotations, generateDesignImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
 export async function createJob(type: JobType, payload: Record<string, unknown>) {
@@ -204,9 +204,7 @@ async function processGenerateDesign(job: Job) {
 
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
   const designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
-  const annotations = Array.isArray((floor.ai_analysis as Record<string, unknown>)?.annotations)
-    ? ((floor.ai_analysis as Record<string, unknown>).annotations as unknown[])
-    : fallbackAnnotations();
+  const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
   const legend = normalizeLegend((floor.ai_analysis as Record<string, unknown>)?.symbol_legend, DEFAULT_SYMBOL_LEGEND);
 
   const { data: design, error } = await supabase

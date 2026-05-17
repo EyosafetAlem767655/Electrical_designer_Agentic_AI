@@ -195,6 +195,51 @@ export function fallbackAnnotations(): DesignAnnotation[] {
   ];
 }
 
+function numberInPlanBounds(value: unknown, fallback: number) {
+  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(100, Math.max(0, number));
+}
+
+export function normalizeAnnotations(value: unknown, fallback: DesignAnnotation[]) {
+  if (!Array.isArray(value)) return fallback;
+  const annotations = value
+    .map((item, index): DesignAnnotation | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const label = typeof record.label === "string" && record.label.trim() ? record.label.trim() : `Note ${index + 1}`;
+      return {
+        label,
+        x: numberInPlanBounds(record.x, 12),
+        y: numberInPlanBounds(record.y, 12 + index * 8),
+        targetX: numberInPlanBounds(record.targetX, 24),
+        targetY: numberInPlanBounds(record.targetY, 24 + index * 8),
+        type: typeof record.type === "string" && record.type.trim() ? record.type.trim() : "electrical_note",
+        description: typeof record.description === "string" ? record.description : undefined
+      } satisfies DesignAnnotation;
+    })
+    .filter((item): item is DesignAnnotation => Boolean(item));
+
+  return annotations.length ? annotations : fallback;
+}
+
 export function normalizeLegend(value: unknown, fallback: SymbolLegendItem[]) {
-  return Array.isArray(value) && value.length > 0 ? (value as SymbolLegendItem[]) : fallback;
+  if (!Array.isArray(value)) return fallback;
+  const legend = value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const symbol = typeof record.symbol === "string" && record.symbol.trim() ? record.symbol.trim() : null;
+      const label = typeof record.label === "string" && record.label.trim() ? record.label.trim() : null;
+      if (!symbol || !label) return null;
+      return {
+        symbol,
+        label,
+        color: typeof record.color === "string" && record.color.trim() ? record.color.trim() : "#2f8178",
+        description: typeof record.description === "string" && record.description.trim() ? record.description.trim() : "Electrical design symbol"
+      } satisfies SymbolLegendItem;
+    })
+    .filter((item): item is SymbolLegendItem => Boolean(item));
+
+  return legend.length ? legend : fallback;
 }

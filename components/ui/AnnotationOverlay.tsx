@@ -5,6 +5,7 @@ import type { DesignAnnotation } from "@/types";
 
 export function AnnotationOverlay({ annotations }: { annotations: DesignAnnotation[] }) {
   const [active, setActive] = useState<string | null>(null);
+  const safeAnnotations = annotations.filter((annotation) => annotation?.label && Number.isFinite(annotation.x) && Number.isFinite(annotation.y) && Number.isFinite(annotation.targetX) && Number.isFinite(annotation.targetY));
   return (
     <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
       <defs>
@@ -12,7 +13,7 @@ export function AnnotationOverlay({ annotations }: { annotations: DesignAnnotati
           <path d="M 0 0 L 10 5 L 0 10 z" fill="#2f8178" />
         </marker>
       </defs>
-      {annotations.map((annotation) => {
+      {safeAnnotations.map((annotation) => {
         const isActive = active === annotation.label;
         return (
           <g key={`${annotation.label}-${annotation.x}-${annotation.y}`} onMouseEnter={() => setActive(annotation.label)} onMouseLeave={() => setActive(null)}>
