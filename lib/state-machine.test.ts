@@ -3,10 +3,17 @@ import { parseTelegramGroupInput } from "@/lib/utils";
 import { isPersonNameMatch, isProjectNameMatch, parseBindCommand, parseFloorNames, parsePositiveInteger, parseStartPayload, parseVerificationDetails } from "@/lib/state-machine";
 
 describe("state machine helpers", () => {
-  it("matches project names case-insensitively with minor punctuation differences", () => {
+  it("matches project names with strict normalized equality", () => {
     expect(isProjectNameMatch("Nova Heights", "nova-heights")).toBe(true);
-    expect(isProjectNameMatch("Nova Hieghts", "Nova Heights")).toBe(true);
+    expect(isProjectNameMatch("Nova Hieghts", "Nova Heights")).toBe(false);
+    expect(isProjectNameMatch("Nova Heights Tower", "Nova Heights")).toBe(false);
     expect(isProjectNameMatch("Other Project", "Nova Heights")).toBe(false);
+  });
+
+  it("rejects false full names during strict verification", () => {
+    expect(isPersonNameMatch("Amanuel Tesfaye", "Amanuel Tesfaye")).toBe(true);
+    expect(isPersonNameMatch("Amanuel Tsefaye", "Amanuel Tesfaye")).toBe(false);
+    expect(isPersonNameMatch("Amanuel", "Amanuel Tesfaye")).toBe(false);
   });
 
   it("parses floor names in bottom-to-top order", () => {
@@ -38,6 +45,15 @@ describe("state machine helpers", () => {
     expect(parseStartPayload("/start")).toBe(null);
   });
 
+  it("requires a start payload before exact verification can proceed", () => {
+    const details = parseVerificationDetails("Full name: Sara Bekele\nProject: Addis Clinic");
+    expect(parseStartPayload("/start")).toBe(null);
+    expect(parseStartPayload("/start ADDIS123")).toBe("ADDIS123");
+    expect(isPersonNameMatch(details.fullName, "Sara Bekele")).toBe(true);
+    expect(isProjectNameMatch(details.projectName, "Addis Clinic")).toBe(true);
+    expect(isProjectNameMatch("Fake Project", "Addis Clinic")).toBe(false);
+  });
+
   it("parses architect verification details", () => {
     expect(parseVerificationDetails("Full name: Amanuel Tesfaye\nProject: Nova Heights")).toEqual({
       fullName: "Amanuel Tesfaye",
@@ -47,7 +63,7 @@ describe("state machine helpers", () => {
       fullName: "Amanuel Tesfaye",
       projectName: "Nova Heights"
     });
-    expect(isPersonNameMatch("Amanuel Tsefaye", "Amanuel Tesfaye")).toBe(true);
+    expect(isPersonNameMatch("Amanuel Tsefaye", "Amanuel Tesfaye")).toBe(false);
   });
 
   it("accepts start-payload style bot onboarding through explicit verification details", () => {

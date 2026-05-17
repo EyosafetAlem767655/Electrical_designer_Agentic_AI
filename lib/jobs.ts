@@ -27,6 +27,25 @@ export async function triggerJobProcessing() {
   }
 }
 
+export async function retryFailedJob(jobId: string) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("jobs")
+    .update({
+      status: "pending",
+      attempts: 0,
+      error: null,
+      run_after: new Date().toISOString()
+    })
+    .eq("id", jobId)
+    .eq("status", "failed")
+    .select("*")
+    .single();
+  if (error) throw error;
+  void triggerJobProcessing();
+  return data as Job;
+}
+
 async function claimNextJob() {
   const supabase = getSupabaseAdmin();
   const { data: jobs, error } = await supabase

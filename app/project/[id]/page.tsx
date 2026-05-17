@@ -7,6 +7,7 @@ import { FloorTimeline } from "@/components/ui/FloorTimeline";
 import { GlassPanel } from "@/components/ui/GlassPanel";
 import { NeonButton } from "@/components/ui/NeonButton";
 import { ProjectActions } from "@/components/ui/ProjectActions";
+import { RetryJobButton } from "@/components/ui/RetryJobButton";
 import { FLOOR_STATUS_LABELS, PROJECT_STATUS_LABELS } from "@/lib/constants";
 import { getProjectBundle } from "@/lib/data";
 import { getEnv } from "@/lib/env";
@@ -119,10 +120,13 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               <p className="text-sm font-semibold text-[#fffaf0]">Automation Queue</p>
               <p className="mt-1 text-sm text-[#efe4d4]/62">{activeJobs.length} active job{activeJobs.length === 1 ? "" : "s"} - {failedJobs.length} failed</p>
               {failedJobs[0] ? (
-                <p className="mt-3 rounded border border-rose-300/24 bg-rose-500/10 p-3 text-sm leading-5 text-rose-100">
-                  <AlertTriangle className="mr-2 inline h-4 w-4" />
-                  {failedJobs[0].type}: {failedJobs[0].error ?? "Unknown failure"}
-                </p>
+                <div className="mt-3 rounded border border-rose-300/24 bg-rose-500/10 p-3 text-sm leading-5 text-rose-100">
+                  <p>
+                    <AlertTriangle className="mr-2 inline h-4 w-4" />
+                    {failedJobs[0].type}: {failedJobs[0].error ?? "Unknown failure"}
+                  </p>
+                  <RetryJobButton jobId={failedJobs[0].id} />
+                </div>
               ) : (
                 <p className="mt-3 text-xs text-[#c9b9a6]/52">Cron and enqueue triggers process PDF, AI, revision, and package jobs automatically.</p>
               )}

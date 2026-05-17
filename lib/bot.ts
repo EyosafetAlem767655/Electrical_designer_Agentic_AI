@@ -53,17 +53,28 @@ async function updateSession(sessionId: string, values: Partial<BotSession>) {
   return data as BotSession;
 }
 
+function normalizeProjectCode(value: string) {
+  return value.trim().toUpperCase();
+}
+
+function startLinkRequiredMessage() {
+  return "Please open the project-specific Telegram start link from your project admin before verifying. The link includes the project start code I need to identify the assignment.";
+}
+
 async function findProjectForVerification(fullName: string, projectName: string, username?: string | null, projectHint?: string | null) {
+  if (!projectHint) return null;
+
   const supabase = getSupabaseAdmin();
   const normalizedUsername = username ? normalizeTelegramUsername(username) : null;
+  const normalizedHint = normalizeProjectCode(projectHint);
   const query = supabase.from("projects").select("*").in("status", ["created", "awaiting_verification", "verified", "in_progress"]);
   const { data, error } = await query;
   if (error) throw error;
   return (
     ((data ?? []) as Project[]).find((project) => {
       const storedUsername = project.architect_telegram_username ? normalizeTelegramUsername(project.architect_telegram_username) : "";
-      const usernameMatches = !storedUsername || storedUsername.startsWith("pending-") || !normalizedUsername || storedUsername === normalizedUsername;
-      const hintMatches = !projectHint || project.id === projectHint || project.project_code === projectHint;
+      const usernameMatches = !storedUsername || storedUsername.startsWith("pending-") || Boolean(normalizedUsername && storedUsername === normalizedUsername);
+      const hintMatches = project.id === projectHint || (project.project_code ? normalizeProjectCode(project.project_code) === normalizedHint : false);
       return hintMatches && usernameMatches && isProjectNameMatch(projectName, project.project_name) && isPersonNameMatch(fullName, project.architect_name);
     }) ??
     null
@@ -183,29 +194,47 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
   const text = message.text?.trim() ?? "";
   await logMessage(session.project_id, session.current_floor_id, "architect", text || message.document?.file_name || "Attachment", message.document ? "document" : "text", message.message_id);
 
+  if (text.startsWith("/start")) {
+    const projectHint = parseStartPayload(text);
+    session = await updateSession(session.id, {
+      project_id: null,
+      current_floor_id: null,
+      state: "AWAITING_VERIFICATION",
+      telegram_chat_id: message.chat.id,
+      data: projectHint ? { projectHint } : {}
+    });
+    await botReply(
+      message.chat.id,
+      null,
+      null,
+      projectHint
+        ? "Project link received. To verify your identity, please send your exact full name and exact project name like this:\nFull name: Your Name\nProject: Project Name"
+        : startLinkRequiredMessage()
+    );
+    return { ok: true };
+  }
+
   if (!session.project_id || session.state === "AWAITING_VERIFICATION") {
-    if (!text || text.startsWith("/start")) {
-      const projectHint = text ? parseStartPayload(text) : null;
-      await botReply(
-        message.chat.id,
-        null,
-        null,
-        `${projectHint ? "Project link received. " : ""}Welcome! I'm the Elec Nova Tech electrical design assistant. To verify your identity, please send your full name and the project you work on like this:\nFull name: Your Name\nProject: Project Name`
-      );
-      await updateSession(session.id, { state: "AWAITING_VERIFICATION", data: projectHint ? { projectHint } : session.data });
+    const projectHint = typeof session.data?.projectHint === "string" ? session.data.projectHint : null;
+    if (!projectHint) {
+      await botReply(message.chat.id, null, null, startLinkRequiredMessage());
+      return { ok: true };
+    }
+
+    if (!text) {
+      await botReply(message.chat.id, null, null, "Please send your exact full name and exact project name like this:\nFull name: Your Name\nProject: Project Name");
       return { ok: true };
     }
 
     const details = parseVerificationDetails(text);
     if (!details.fullName || !details.projectName) {
-      await botReply(message.chat.id, null, null, "Please send your full name and project name like this:\nFull name: Your Name\nProject: Project Name");
+      await botReply(message.chat.id, null, null, "Please send your exact full name and exact project name like this:\nFull name: Your Name\nProject: Project Name");
       return { ok: true };
     }
 
-    const projectHint = typeof session.data?.projectHint === "string" ? session.data.projectHint : null;
     const project = await findProjectForVerification(details.fullName, details.projectName, session.telegram_username, projectHint);
     if (!project) {
-      await botReply(message.chat.id, null, null, "I'm sorry, I could not verify that full name and project. Please check with your project admin and try again.");
+      await botReply(message.chat.id, null, null, "I'm sorry, I could not verify that start code, full name, and project name. Please check the project-specific link and exact assignment details with your project admin.");
       return { ok: true };
     }
 

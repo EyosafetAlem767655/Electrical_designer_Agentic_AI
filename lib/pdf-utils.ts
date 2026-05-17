@@ -3,6 +3,7 @@ import { writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Design, Floor, Project } from "@/types";
+import type { Pdf } from "pdf-to-img";
 
 async function ensurePdfCanvasPolyfills() {
   const canvas = (await import("@napi-rs/canvas")) as unknown as {
@@ -21,14 +22,34 @@ async function ensurePdfCanvasPolyfills() {
   if (!target.Path2D && canvas.Path2D) target.Path2D = canvas.Path2D;
 }
 
+async function ensurePdfWorker() {
+  const target = globalThis as typeof globalThis & {
+    pdfjsWorker?: { WorkerMessageHandler?: unknown };
+  };
+
+  target.pdfjsWorker ??= (await import("pdfjs-dist/legacy/build/pdf.worker.mjs")) as {
+    WorkerMessageHandler?: unknown;
+  };
+}
+
 export async function convertPdfToPngPages(pdfBuffer: Buffer) {
   await ensurePdfCanvasPolyfills();
+  await ensurePdfWorker();
   const { pdf } = await import("pdf-to-img");
   const tmpPath = join(tmpdir(), `elec-nova-${Date.now()}-${Math.random().toString(16).slice(2)}.pdf`);
   await writeFile(tmpPath, pdfBuffer);
+  let document: Pdf | null = null;
 
   try {
-    const document = await pdf(tmpPath, { scale: 3 });
+    document = await pdf(tmpPath, {
+      scale: 3,
+      docInitParams: {
+        disableFontFace: false,
+        useSystemFonts: true,
+        isOffscreenCanvasSupported: false,
+        useWorkerFetch: false
+      }
+    });
     const pages: Buffer[] = [];
     for await (const image of document) {
       pages.push(Buffer.from(image));
@@ -36,6 +57,7 @@ export async function convertPdfToPngPages(pdfBuffer: Buffer) {
     }
     return pages;
   } finally {
+    await document?.destroy().catch(() => undefined);
     await unlink(tmpPath).catch(() => undefined);
   }
 }

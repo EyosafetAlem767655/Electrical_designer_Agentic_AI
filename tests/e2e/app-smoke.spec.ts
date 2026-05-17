@@ -24,3 +24,19 @@ test("project chat page degrades without xAI credentials", async ({ page }) => {
   await page.getByRole("button", { name: /Send/i }).click();
   await expect(page.getByText(/xAI is not configured locally|Nova Tower Prototype/i)).toBeVisible();
 });
+
+test("project chat renders assistant markdown without raw asterisks", async ({ page }) => {
+  await page.route("**/api/ai/chat", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ answer: "**Panel schedule**\n\n- Lighting circuits\n- Socket circuits" })
+    });
+  });
+
+  await page.goto("/project/demo-project/chat");
+  await page.getByPlaceholder("Ask about the current design...").fill("Give me a summary");
+  await page.getByRole("button", { name: /Send/i }).click();
+
+  await expect(page.locator("strong", { hasText: "Panel schedule" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Lighting circuits" })).toBeVisible();
+});

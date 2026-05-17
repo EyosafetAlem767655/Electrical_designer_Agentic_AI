@@ -2,9 +2,39 @@
 
 import { Send } from "lucide-react";
 import { FormEvent, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { NeonButton } from "@/components/ui/NeonButton";
 
 type Message = { role: "user" | "assistant"; content: string };
+
+function AssistantMarkdown({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+        ul: ({ children }) => <ul className="mb-2 list-disc space-y-1 pl-5 last:mb-0">{children}</ul>,
+        ol: ({ children }) => <ol className="mb-2 list-decimal space-y-1 pl-5 last:mb-0">{children}</ol>,
+        a: ({ children, href }) => (
+          <a href={href} target="_blank" rel="noreferrer" className="font-semibold text-[#d6b17d] underline decoration-[#d6b17d]/45 underline-offset-2 hover:text-[#fffaf0]">
+            {children}
+          </a>
+        ),
+        code: ({ children, className }) => {
+          const inline = !className;
+          if (inline) {
+            return <code className="rounded border border-white/10 bg-black/24 px-1 py-0.5 text-[0.92em] text-cyan-50">{children}</code>;
+          }
+          return <code className={className}>{children}</code>;
+        },
+        pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded border border-white/10 bg-black/30 p-3 text-xs leading-5 text-cyan-50">{children}</pre>
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
 
 export function ChatInterface({ projectId }: { projectId: string }) {
   const [messages, setMessages] = useState<Message[]>([
@@ -36,7 +66,13 @@ export function ChatInterface({ projectId }: { projectId: string }) {
         {messages.map((message, index) => (
           <div key={`${message.role}-${index}`} className={message.role === "user" ? "ml-auto max-w-[82%]" : "mr-auto max-w-[82%]"}>
             <div className={message.role === "user" ? "rounded-lg border border-cyan-300/40 bg-cyan-300/12 px-4 py-3" : "rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3"}>
-              <p className="whitespace-pre-wrap text-sm leading-6 text-cyan-50/88">{message.content}</p>
+              {message.role === "user" ? (
+                <p className="whitespace-pre-wrap text-sm leading-6 text-cyan-50/88">{message.content}</p>
+              ) : (
+                <div className="text-sm leading-6 text-cyan-50/88">
+                  <AssistantMarkdown content={message.content} />
+                </div>
+              )}
             </div>
           </div>
         ))}
