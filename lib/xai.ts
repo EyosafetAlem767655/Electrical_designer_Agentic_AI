@@ -24,9 +24,18 @@ async function xaiFetch<T>(path: string, body: Record<string, unknown>) {
     body: JSON.stringify(body)
   });
 
-  const payload = (await response.json()) as T & { error?: { message?: string } };
+  const text = await response.text();
+  let payload = {} as T & { error?: { message?: string } };
+  if (text) {
+    try {
+      payload = JSON.parse(text) as T & { error?: { message?: string } };
+    } catch {
+      payload = {} as T & { error?: { message?: string } };
+    }
+  }
   if (!response.ok) {
-    throw new Error(payload.error?.message ?? `xAI request failed: ${response.status}`);
+    const message = payload.error?.message ?? text;
+    throw new Error(message ? `xAI request failed: ${response.status} - ${message}` : `xAI request failed: ${response.status}`);
   }
 
   return payload;
@@ -55,7 +64,7 @@ function extractJson<T>(text: string, fallback: T): T {
 
 export async function chatCompletion(messages: ChatMessage[], temperature = 0.5) {
   const payload = await xaiFetch<XaiChatResponse>("chat/completions", {
-    model: model("XAI_CHAT_MODEL", "grok-3"),
+    model: model("XAI_CHAT_MODEL", "grok-4.3"),
     messages,
     temperature
   });
@@ -64,15 +73,18 @@ export async function chatCompletion(messages: ChatMessage[], temperature = 0.5)
 }
 
 export async function analyzeFloorPlan(imageBase64: string, context: Record<string, unknown>) {
+  const imageUrl = /^https?:\/\//i.test(imageBase64) || imageBase64.startsWith("data:")
+    ? imageBase64
+    : `data:image/png;base64,${imageBase64}`;
   const response = await xaiFetch<XaiChatResponse>("chat/completions", {
-    model: model("XAI_VISION_MODEL", "grok-2-vision-latest"),
+    model: model("XAI_VISION_MODEL", "grok-4"),
     temperature: 0.3,
     messages: [
       { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
       {
         role: "user",
         content: [
-          { type: "image_url", image_url: { url: `data:image/png;base64,${imageBase64}` } },
+          { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
           {
             type: "text",
             text: `Analyze this architectural floor plan for electrical design. Return strict JSON with keys rooms, load_assumptions, db_recommendation, circuit_strategy, emergency_systems, unclear_items, questions, annotations, symbol_legend. Context: ${JSON.stringify(context)}`
@@ -136,7 +148,7 @@ Specific requirements and analysis:
 ${JSON.stringify(context.requirements, null, 2)}`;
 
   const payload = await xaiFetch<{ data?: Array<{ url?: string; b64_json?: string }> }>("images/generations", {
-    model: model("XAI_IMAGE_MODEL", "grok-2-image-latest"),
+    model: model("XAI_IMAGE_MODEL", "grok-imagine-image"),
     prompt,
     n: 1,
     size: "1024x1024"

@@ -9,8 +9,9 @@ function authorized(request: Request) {
   const secrets = [getEnv("JOB_SECRET"), getEnv("CRON_SECRET"), getEnv("TELEGRAM_SETUP_SECRET")].filter((value): value is string => Boolean(value));
   if (!secrets.length) return true;
   const jobHeader = request.headers.get("x-job-secret");
+  const setupHeader = request.headers.get("x-setup-secret");
   const authHeader = request.headers.get("authorization");
-  return secrets.some((secret) => jobHeader === secret || authHeader === `Bearer ${secret}`);
+  return secrets.some((secret) => jobHeader === secret || setupHeader === secret || authHeader === `Bearer ${secret}`);
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {

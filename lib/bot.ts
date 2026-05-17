@@ -152,7 +152,7 @@ async function handleGroupMessage(message: TelegramMessage) {
 
   await logMessage(project.id, null, "bot", `Telegram group bound: ${message.chat.title ?? message.chat.id}`, "command", message.message_id);
   try {
-    await sendProjectInvite(message.chat.id, project.architect_telegram_username, project.architect_name);
+    await sendProjectInvite(message.chat.id, project.architect_telegram_username, project.architect_name, project.project_code ?? project.id);
     await updateOutreachStatus(project.id, "invite_sent").catch(() => undefined);
   } catch (error) {
     await updateOutreachStatus(project.id, "invite_failed").catch(() => undefined);

@@ -10,15 +10,17 @@ export function RetryJobButton({ jobId }: { jobId: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [secret, setSecret] = useState(() => (typeof window === "undefined" ? "" : window.sessionStorage.getItem(setupSecretStorageKey) ?? ""));
 
   async function retry() {
     setBusy(true);
     setError(null);
     try {
-      const setupSecret = window.sessionStorage.getItem(setupSecretStorageKey)?.trim();
+      const setupSecret = secret.trim();
+      if (setupSecret) window.sessionStorage.setItem(setupSecretStorageKey, setupSecret);
       const response = await fetch(`/api/jobs/${jobId}/retry`, {
         method: "POST",
-        headers: setupSecret ? { "x-job-secret": setupSecret } : undefined
+        headers: setupSecret ? { "x-job-secret": setupSecret, "x-setup-secret": setupSecret } : undefined
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "Retry failed");
@@ -31,7 +33,14 @@ export function RetryJobButton({ jobId }: { jobId: string }) {
   }
 
   return (
-    <div className="mt-3">
+    <div className="mt-3 space-y-2">
+      <input
+        value={secret}
+        onChange={(event) => setSecret(event.target.value)}
+        className="h-9 w-full rounded border border-[#d6b17d]/24 bg-black/20 px-3 text-xs text-[#fffaf0] outline-none placeholder:text-[#c9b9a6]/42 focus:border-[#d6b17d]/58"
+        placeholder="Setup, job, or cron secret if configured"
+        type="password"
+      />
       <button
         type="button"
         onClick={retry}

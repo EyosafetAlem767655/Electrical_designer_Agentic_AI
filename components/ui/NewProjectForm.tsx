@@ -44,6 +44,7 @@ export function NewProjectForm() {
             ["projectName", "Project name", "Nova Heights"],
             ["companyName", "Company/client name", "Client company"],
             ["architectName", "Architect full name", "Amanuel Tesfaye"],
+            ["architectTelegramUsername", "Architect Telegram username", "amanuel_tesfaye"],
             ["buildingAddress", "Building address", "Addis Ababa"]
           ].map(([name, label, placeholder]) => (
             <label key={name} className={name === "projectName" ? "block md:col-span-2" : "block"}>
@@ -76,7 +77,7 @@ export function NewProjectForm() {
         <textarea name="notes" className="mt-2 min-h-24 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 py-2 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58" placeholder="Optional internal context for review" />
       </label>
       <p className="rounded border border-[#c6a171]/14 bg-white/[0.025] px-3 py-2 text-sm leading-5 text-[#efe4d4]/64">
-        After creation, open the project and send the bot start link to the architect. The bot will ask for their full name and project name, then continue only if they match this record.
+        If this architect has already started the bot before, the bot will message them directly. Otherwise, open the project and send the bot start link to the architect.
       </p>
       {error ? (
         <div className="rounded border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">

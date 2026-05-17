@@ -4,8 +4,10 @@ import { makeProjectCode } from "@/lib/constants";
 import { getProjects } from "@/lib/data";
 import { getEnv, getRequestBaseUrl } from "@/lib/env";
 import { getSupabaseAdmin, hasSupabaseServerEnv } from "@/lib/supabase";
-import { ensureTelegramWebhook, sendProjectInvite } from "@/lib/telegram";
+import { ensureTelegramWebhook, projectBotStartLink, sendProjectInvite, sendProjectStartMessage } from "@/lib/telegram";
+import { normalizeProjectName } from "@/lib/state-machine";
 import { normalizeTelegramUsername, parseTelegramGroupInput } from "@/lib/utils";
+import type { BotSession, Project } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,8 +25,7 @@ const createProjectSchema = z.object({
 });
 
 function botStartLink(projectCode?: string | null) {
-  const username = getEnv("TELEGRAM_BOT_USERNAME") ?? "awolaibot";
-  return `https://t.me/${username}${projectCode ? `?start=${encodeURIComponent(projectCode)}` : ""}`;
+  return projectBotStartLink(projectCode);
 }
 
 type ProjectInsert = {
@@ -77,6 +78,80 @@ async function insertProject(supabase: ReturnType<typeof getSupabaseAdmin>, row:
 
 async function updateOutreachStatus(supabase: ReturnType<typeof getSupabaseAdmin>, projectId: string, status: string) {
   await supabase.from("projects").update({ telegram_outreach_status: status }).eq("id", projectId);
+}
+
+async function findKnownArchitectSession(supabase: ReturnType<typeof getSupabaseAdmin>, project: Project) {
+  const storedUsername = project.architect_telegram_username ? normalizeTelegramUsername(project.architect_telegram_username) : "";
+  if (storedUsername && !storedUsername.startsWith("pending-")) {
+    const { data, error } = await supabase.from("bot_sessions").select("*").eq("telegram_username", storedUsername).maybeSingle();
+    if (error) throw error;
+    if (data) return data as BotSession;
+  }
+
+  const { data: previousProjects, error } = await supabase
+    .from("projects")
+    .select("id, architect_name, architect_telegram_username, telegram_chat_id, telegram_user_id")
+    .neq("id", project.id)
+    .not("telegram_chat_id", "is", null);
+  if (error) throw error;
+
+  const normalizedArchitectName = normalizeProjectName(project.architect_name);
+  const previousProject = ((previousProjects ?? []) as Pick<Project, "id" | "architect_name" | "architect_telegram_username" | "telegram_chat_id" | "telegram_user_id">[]).find(
+    (item) => normalizeProjectName(item.architect_name) === normalizedArchitectName && item.telegram_chat_id
+  );
+  if (!previousProject?.telegram_user_id || !previousProject.telegram_chat_id) return null;
+
+  const { data: session } = await supabase.from("bot_sessions").select("*").eq("telegram_user_id", previousProject.telegram_user_id).maybeSingle();
+  if (session) return session as BotSession;
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("bot_sessions")
+    .insert({
+      telegram_user_id: previousProject.telegram_user_id,
+      telegram_chat_id: previousProject.telegram_chat_id,
+      telegram_username: previousProject.architect_telegram_username ? normalizeTelegramUsername(previousProject.architect_telegram_username) : null,
+      state: "AWAITING_VERIFICATION"
+    })
+    .select("*")
+    .single();
+  if (insertError) throw insertError;
+  return inserted as BotSession;
+}
+
+async function startKnownArchitectChat(supabase: ReturnType<typeof getSupabaseAdmin>, project: Project) {
+  const session = await findKnownArchitectSession(supabase, project);
+  if (!session) return false;
+
+  const projectHint = project.project_code ?? project.id;
+  await supabase
+    .from("bot_sessions")
+    .update({
+      project_id: null,
+      current_floor_id: null,
+      state: "AWAITING_VERIFICATION",
+      data: { projectHint },
+      telegram_chat_id: session.telegram_chat_id
+    })
+    .eq("id", session.id);
+
+  await supabase
+    .from("projects")
+    .update({
+      telegram_chat_id: session.telegram_chat_id,
+      telegram_user_id: session.telegram_user_id,
+      architect_telegram_username: session.telegram_username ?? project.architect_telegram_username,
+      telegram_outreach_status: "direct_message_sent",
+      status: project.status === "created" ? "awaiting_verification" : project.status
+    })
+    .eq("id", project.id);
+
+  await sendProjectStartMessage(session.telegram_chat_id, project.project_name, project.project_code ?? project.id, project.architect_name);
+  await supabase.from("conversations").insert({
+    project_id: project.id,
+    sender: "bot",
+    message: `Direct Telegram assignment sent for ${project.project_name}.`
+  });
+  return true;
 }
 
 function webhookUrl(request: Request) {
@@ -164,9 +239,15 @@ export async function POST(request: Request) {
     if (error) throw error;
 
     let warning: string | null = null;
-    if (parsedGroup.chatId && architectTelegramUsername) {
+    const typedProject = project as Project;
+    const directStarted = await startKnownArchitectChat(supabase, typedProject).catch((telegramError) => {
+      warning = telegramError instanceof Error ? telegramError.message : "Telegram direct outreach failed";
+      return false;
+    });
+
+    if (!directStarted && parsedGroup.chatId && architectTelegramUsername) {
       try {
-        await sendProjectInvite(parsedGroup.chatId, architectTelegramUsername, input.architectName);
+        await sendProjectInvite(parsedGroup.chatId, architectTelegramUsername, input.architectName, project.project_code ?? project.id);
         await updateOutreachStatus(supabase, project.id, "invite_sent").catch(() => undefined);
       } catch (telegramError) {
         warning = telegramError instanceof Error ? telegramError.message : "Telegram outreach failed";
@@ -181,7 +262,12 @@ export async function POST(request: Request) {
         botStartLink: botStartLink(project.project_code ?? project.id),
         bindCommand: `/bind ${project.project_code ?? project.id}`,
         webhook,
-        warning: warning ?? webhook.warning ?? "Project created. Send the bot start link to the architect; the bot will verify full name and project name."
+        warning:
+          warning ??
+          webhook.warning ??
+          (directStarted
+            ? "Project created and the architect was messaged directly because they already started the bot before."
+            : "Project created. Send the bot start link to the architect; the bot will verify full name and project name.")
       },
       { status: 201 }
     );

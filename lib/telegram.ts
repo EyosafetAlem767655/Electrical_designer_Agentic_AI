@@ -77,13 +77,27 @@ export async function sendTelegramMessage(chatId: number | string, text: string)
   });
 }
 
-export async function sendProjectInvite(groupChatId: number | string, architectUsername: string, architectName?: string | null) {
-  const username = normalizeTelegramUsername(architectUsername);
+export function projectBotStartLink(projectCode?: string | null) {
   const botUsername = getEnv("TELEGRAM_BOT_USERNAME") ?? "awolaibot";
+  return `https://t.me/${botUsername}${projectCode ? `?start=${encodeURIComponent(projectCode)}` : ""}`;
+}
+
+export async function sendProjectInvite(groupChatId: number | string, architectUsername: string, architectName?: string | null, projectCode?: string | null) {
+  const username = normalizeTelegramUsername(architectUsername);
   const name = architectName?.trim() ? `${architectName.trim()} ` : "";
+  const startLink = projectBotStartLink(projectCode);
   return sendTelegramMessage(
     groupChatId,
-    `Hello ${name}@${username}! I'm the Elec Nova Tech AI assistant. I've been assigned to help with an electrical design project. Please send me a direct message to get started. Tap @${botUsername} and press Start.`
+    `Hello ${name}@${username}! I'm the Elec Nova Tech AI assistant. I've been assigned to help with an electrical design project. Please open this project link to continue: ${startLink}`
+  );
+}
+
+export async function sendProjectStartMessage(chatId: number | string, projectName: string, projectCode: string | null, architectName?: string | null) {
+  const greeting = architectName?.trim() ? `Hello ${architectName.trim()},` : "Hello,";
+  const codeLine = projectCode ? `Start code: ${projectCode}\n` : "";
+  return sendTelegramMessage(
+    chatId,
+    `${greeting}\n\nA new Elec Nova Tech electrical design assignment is ready for you:\nProject: ${projectName}\n${codeLine}\nPlease reply with your exact verification details:\nFull name: Your Name\nProject: ${projectName}`
   );
 }
 

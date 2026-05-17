@@ -148,8 +148,8 @@ async function processAnalyzeFloor(job: Job) {
   const { project, floor } = await getProjectFloor(projectId, floorId);
   if (!floor.architectural_image_path) throw new Error("Floor has no architectural image path");
 
-  const imageBase64 = await fetchStorageBase64(floor.architectural_image_path);
-  const analysis = await analyzeFloorPlan(imageBase64, { project, floor });
+  const imageInput = floor.architectural_image_url ?? (await fetchStorageBase64(floor.architectural_image_path));
+  const analysis = await analyzeFloorPlan(imageInput, { project, floor });
   const questions = await generateQuestions(analysis as Record<string, unknown>, { project, floor });
 
   await supabase
