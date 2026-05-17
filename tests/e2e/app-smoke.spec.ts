@@ -16,6 +16,8 @@ test("telegram setup page exposes webhook controls", async ({ page }) => {
 test("demo project exposes guarded delete control", async ({ page }) => {
   await page.goto("/project/demo-project");
   await expect(page.getByRole("button", { name: /Delete Project/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Submit Revision/i })).toBeVisible();
+  await expect(page.getByPlaceholder(/Make labels larger/i)).toBeVisible();
 });
 
 test("project chat page degrades without xAI credentials", async ({ page }) => {

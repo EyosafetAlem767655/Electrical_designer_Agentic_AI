@@ -87,7 +87,17 @@ export async function analyzeFloorPlan(imageBase64: string, context: Record<stri
           { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
           {
             type: "text",
-            text: `Analyze this architectural floor plan for electrical design. Return strict JSON with keys rooms, load_assumptions, db_recommendation, circuit_strategy, emergency_systems, unclear_items, questions, annotations, symbol_legend. Context: ${JSON.stringify(context)}`
+            text: `Analyze this architectural floor plan for a real-world electrical installation design. Do a careful engineering checklist before answering, then return strict JSON only. The JSON must include keys rooms, load_assumptions, lighting_plan, socket_outlet_plan, switch_plan, db_recommendation, circuit_strategy, cable_route_strategy, emergency_systems, fire_alarm_plan, data_cctv_plan, unclear_items, questions, annotations, symbol_legend, electrician_notes.
+
+Requirements:
+- Identify every room, corridor, stair, lobby, service room, wet area, and usable section.
+- Ensure every room and section receives appropriate lighting coverage.
+- Ensure every habitable or working room receives practical socket outlet coverage.
+- Recommend switch positions near entrances.
+- Recommend cable routes that electricians can understand and install.
+- List any assumptions where the plan is unclear.
+
+Context: ${JSON.stringify(context)}`
           }
         ]
       }
@@ -97,13 +107,20 @@ export async function analyzeFloorPlan(imageBase64: string, context: Record<stri
   return extractJson(firstText(response), {
     rooms: [],
     load_assumptions: [],
+    lighting_plan: [],
+    socket_outlet_plan: [],
+    switch_plan: [],
     db_recommendation: "",
     circuit_strategy: "",
+    cable_route_strategy: "",
     emergency_systems: [],
+    fire_alarm_plan: [],
+    data_cctv_plan: [],
     unclear_items: [],
     questions: ["Please confirm the room purposes and any special equipment for this floor."],
     annotations: [],
-    symbol_legend: []
+    symbol_legend: [],
+    electrician_notes: []
   });
 }
 
@@ -124,6 +141,68 @@ export async function generateQuestions(analysis: Record<string, unknown>, conte
   return extractJson<string[]>(text, ["Please confirm room purposes, special equipment, and preferred outlet/lighting requirements."]);
 }
 
+async function createDesignPlan(context: {
+  projectName: string;
+  floorName: string;
+  buildingPurpose?: string | null;
+  requirements: Record<string, unknown>;
+}) {
+  return chatCompletion(
+    [
+      { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `Prepare the final electrician-facing electrical drawing plan before image generation. Be concise but complete. Do not include hidden chain-of-thought. Return a practical checklist with:
+- room-by-room lighting coverage
+- socket outlet coverage
+- switch locations
+- DB location and circuit grouping
+- clear wiring/cable route plan
+- emergency lighting, fire alarm, data/CCTV where applicable
+- any real-world assumptions used
+
+Project: ${context.projectName}
+Floor: ${context.floorName}
+Building purpose: ${context.buildingPurpose ?? "not specified"}
+Requirements and analysis: ${JSON.stringify(context.requirements)}`
+      }
+    ],
+    0.2
+  );
+}
+
+function imageInputFromResult(image: { url?: string; b64_json?: string }) {
+  if (image.url) return image.url;
+  if (image.b64_json) return `data:image/png;base64,${image.b64_json}`;
+  throw new Error("xAI image generation returned no image");
+}
+
+async function improveDesignTextReadability(image: { url?: string; b64_json?: string }, context: { projectName: string; floorName: string; revision: number }) {
+  const payload = await xaiFetch<{ data?: Array<{ url?: string; b64_json?: string }> }>("images/edits", {
+    model: model("XAI_IMAGE_MODEL", "grok-imagine-image-quality"),
+    prompt: `Edit this completed electrical design drawing to improve text and label readability only.
+
+Preserve the architectural plan, electrical symbols, DB location, lighting points, socket outlets, wiring routes, circuit groupings, and all engineering intent.
+Re-render blurry, distorted, tiny, or unreadable labels as crisp high-contrast technical labels.
+Make circuit numbers, DB labels, legend text, title block text, room-facing callouts, and leader-line labels readable to electricians.
+Do not remove lighting or socket outlets. Do not simplify wiring. Do not change the building layout.
+
+Project: ${context.projectName}
+Floor: ${context.floorName}
+Revision: ${context.revision}`,
+    image: {
+      url: imageInputFromResult(image),
+      type: "image_url"
+    }
+  });
+
+  const improved = payload.data?.[0];
+  if (!improved?.url && !improved?.b64_json) {
+    throw new Error("xAI text readability pass returned no image");
+  }
+  return improved;
+}
+
 export async function generateDesignImage(context: {
   projectName: string;
   projectCode: string;
@@ -135,6 +214,12 @@ export async function generateDesignImage(context: {
   sourceImageUrl?: string | null;
   requirements: Record<string, unknown>;
 }) {
+  const designPlan = await createDesignPlan({
+    projectName: context.projectName,
+    floorName: context.floorName,
+    buildingPurpose: context.buildingPurpose,
+    requirements: context.requirements
+  });
   const prompt = `${context.sourceImageUrl ? "Edit the provided architectural floor-plan image. Preserve the original plan geometry, walls, doors, room labels, dimensions, and scale. Draw the electrical design directly on top of this same plan." : "Create a professional electrical installation design drawing for this architectural plan."}
 
 Project: ${context.projectName}
@@ -149,7 +234,13 @@ Overlay requirements:
 - Keep the original architectural image as the base layer.
 - Add electrical symbols, circuit routes, distribution board location, lighting points, switches, sockets, emergency lighting, fire alarm points, data/CCTV where applicable, and clear labels.
 - Use clean drafting-style colored overlays that remain legible against the source plan.
+- Put lighting points in every room and section, with switch control near entrances.
+- Put socket outlets in every habitable/working room and practical locations for real use.
+- Make wiring routes and circuit numbers obvious enough for electricians to follow.
 - Do not invent a different building layout or redraw the architecture from scratch.
+
+Prepared engineering drawing plan:
+${designPlan}
 
 Specific requirements and analysis:
 ${JSON.stringify(context.requirements, null, 2)}`;
@@ -169,12 +260,16 @@ ${JSON.stringify(context.requirements, null, 2)}`;
         prompt
       });
 
-  const image = payload.data?.[0];
-  if (!image?.url && !image?.b64_json) {
+  const firstPassImage = payload.data?.[0];
+  if (!firstPassImage?.url && !firstPassImage?.b64_json) {
     throw new Error("xAI image generation returned no image");
   }
 
-  return image;
+  return improveDesignTextReadability(firstPassImage, {
+    projectName: context.projectName,
+    floorName: context.floorName,
+    revision: context.revision
+  });
 }
 
 export async function chatWithProjectContext(question: string, context: Record<string, unknown>) {
