@@ -4,7 +4,7 @@ import { convertPdfToPngPages, createFloorPdf, createProjectPackagePdf } from "@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
-import { analyzeFloorPlan, fallbackAnnotations, generateDesignImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
+import { analyzeFloorPlan, fallbackAnnotations, generateBoqItems, generateDesignImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
 export async function createJob(type: JobType, payload: Record<string, unknown>) {
@@ -206,20 +206,37 @@ async function processGenerateDesign(job: Job) {
   const designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
   const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
   const legend = normalizeLegend((floor.ai_analysis as Record<string, unknown>)?.symbol_legend, DEFAULT_SYMBOL_LEGEND);
-
-  const { data: design, error } = await supabase
-    .from("designs")
-    .insert({
-      floor_id: floorId,
-      version,
-      design_image_url: designUrl,
-      design_image_path: imagePath,
-      annotations,
+  const boqItems = await generateBoqItems({
+    projectName: project.project_name,
+    floorName: floor.floor_name,
+    buildingPurpose: project.building_purpose,
+    requirements: {
+      ai_analysis: floor.ai_analysis,
+      architect_answers: floor.architect_answers,
+      special_requirements: project.special_requirements,
+      improvement_request: improvementRequest,
       symbol_legend: legend,
-      improvement_request: improvementRequest ?? null
-    })
-    .select("*")
-    .single();
+      annotations
+    }
+  });
+
+  const designPayload: Record<string, unknown> = {
+    floor_id: floorId,
+    version,
+    design_image_url: designUrl,
+    design_image_path: imagePath,
+    annotations,
+    symbol_legend: legend,
+    boq_items: boqItems,
+    improvement_request: improvementRequest ?? null
+  };
+  let { data: design, error } = await supabase.from("designs").insert(designPayload).select("*").single();
+  if (error && /boq_items|schema cache|column/i.test(`${error.message ?? ""} ${error.details ?? ""}`)) {
+    delete designPayload.boq_items;
+    const retry = await supabase.from("designs").insert(designPayload).select("*").single();
+    design = retry.data;
+    error = retry.error;
+  }
   if (error) throw error;
 
   const keep = ((existing ?? []) as Design[]).slice(1).map((item) => item.id);

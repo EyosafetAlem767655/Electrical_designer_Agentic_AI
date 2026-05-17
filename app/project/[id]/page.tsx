@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, Bot, Building2, FileText, Link2, MessageSquare, MoveUpRight, Send, Sparkles } from "lucide-react";
+import { BoqTable } from "@/components/ui/BoqTable";
 import { DeleteProjectButton } from "@/components/ui/DeleteProjectButton";
 import { DesignViewer } from "@/components/ui/DesignViewer";
 import { FloorTimeline } from "@/components/ui/FloorTimeline";
@@ -148,6 +149,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       <section className="grid gap-5 2xl:grid-cols-[1fr_390px]">
         <div className="space-y-5">
           <DesignViewer design={selectedDesign} />
+          <BoqTable projectId={id} floor={selectedFloor} design={selectedDesign} />
           <GlassPanel className="p-0">
             <div className="border-b border-[#c6a171]/14 px-5 py-4">
               <p className="text-lg font-semibold text-[#fffaf0]">AI Analysis Evidence</p>

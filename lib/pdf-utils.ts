@@ -132,6 +132,80 @@ export async function createFloorPdf(project: Project, floor: Floor, design: Des
     doc.text(value, tbX + 48, tbY + 19 + index * 6);
   });
 
+  addBoqPage(doc, project, floor, design);
+  return Buffer.from(doc.output("arraybuffer"));
+}
+
+function addBoqPage(doc: jsPDF, project: Project, floor: Floor, design: Design) {
+  const items = Array.isArray(design.boq_items) ? design.boq_items : [];
+  doc.addPage([841, 594], "landscape");
+  const margin = 22;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(22);
+  doc.text("Bill Of Quantity", margin, 36);
+  doc.setFontSize(11);
+  doc.text(`${project.project_name} - ${floor.floor_name} - Revision ${design.version}`, margin, 48);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text("Standards basis: Ethiopian EBCS, EEU requirements, IEC 60364, IEC 60529, IEC 60617. Supply: 220-230V single-phase, 380-400V three-phase, 50Hz. Final quantities require site verification.", margin, 60, { maxWidth: 790 });
+
+  const columns = [
+    { title: "No", x: margin, w: 18 },
+    { title: "Category", x: 44, w: 70 },
+    { title: "Item", x: 116, w: 110 },
+    { title: "Specification", x: 228, w: 210 },
+    { title: "Unit", x: 440, w: 34 },
+    { title: "Qty", x: 476, w: 34 },
+    { title: "Standard", x: 512, w: 116 },
+    { title: "Notes", x: 630, w: 182 }
+  ];
+
+  let y = 78;
+  doc.setFillColor(31, 42, 51);
+  doc.rect(margin, y - 7, 797, 10, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  columns.forEach((column) => doc.text(column.title, column.x, y));
+  doc.setTextColor(20, 20, 20);
+  doc.setFont("helvetica", "normal");
+
+  if (!items.length) {
+    doc.setFontSize(12);
+    doc.text("BOQ pending. Generate or revise the design to create floor-level quantities.", margin, 98);
+    return;
+  }
+
+  items.forEach((item, index) => {
+    if (y > 548) {
+      doc.addPage([841, 594], "landscape");
+      y = 36;
+    }
+    const rowY = y + 14;
+    const row = [
+      String(index + 1),
+      item.category,
+      item.item,
+      item.specification,
+      item.unit,
+      String(item.quantity),
+      item.standard,
+      item.notes ?? "Site verification required"
+    ];
+    const wrapped = row.map((value, columnIndex) => doc.splitTextToSize(String(value), columns[columnIndex].w - 3));
+    const rowHeight = Math.max(12, ...wrapped.map((lines) => lines.length * 4.2 + 4));
+    doc.setDrawColor(205, 195, 180);
+    doc.rect(margin, rowY - 8, 797, rowHeight);
+    doc.setFontSize(7.5);
+    wrapped.forEach((lines, columnIndex) => doc.text(lines, columns[columnIndex].x, rowY));
+    y = rowY - 8 + rowHeight;
+  });
+}
+
+export async function createBoqPdf(project: Project, floor: Floor, design: Design) {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: [841, 594] });
+  addBoqPage(doc, project, floor, design);
+  doc.deletePage(1);
   return Buffer.from(doc.output("arraybuffer"));
 }
 

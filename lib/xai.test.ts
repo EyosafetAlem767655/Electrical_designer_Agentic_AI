@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { generateDesignImage } from "@/lib/xai";
+import { generateBoqItems, generateDesignImage } from "@/lib/xai";
 
 const originalEnv = { ...process.env };
 
@@ -86,5 +86,48 @@ describe("xAI image generation", () => {
     expect(imageEditPrompts).toHaveLength(2);
     expect(imageEditPrompts[0].length).toBeLessThanOrEqual(8000);
     expect(imageEditPrompts[1].length).toBeLessThanOrEqual(8000);
+  });
+
+  it("generates Ethiopian IEC/EU BOQ items", async () => {
+    process.env.XAI_API_KEY = "xai-test";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify([
+                    {
+                      category: "Power",
+                      item: "Schuko socket outlet",
+                      specification: "230V, 16A, Type F earthed outlet",
+                      unit: "pcs",
+                      quantity: 12,
+                      standard: "EBCS, IEC 60884",
+                      notes: "Final quantity site verified"
+                    }
+                  ])
+                }
+              }
+            ]
+          }),
+          { status: 200 }
+        );
+      })
+    );
+
+    const items = await generateBoqItems({
+      projectName: "Nova Heights",
+      floorName: "Ground Floor",
+      requirements: { ai_analysis: { rooms: ["Office"], socket_outlet_plan: ["Four outlets"] } }
+    });
+
+    expect(items[0]).toMatchObject({
+      item: "Schuko socket outlet",
+      specification: "230V, 16A, Type F earthed outlet",
+      standard: "EBCS, IEC 60884"
+    });
   });
 });

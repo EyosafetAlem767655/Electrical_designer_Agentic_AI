@@ -54,6 +54,7 @@ create table if not exists designs (
   design_pdf_path text,
   annotations jsonb default '[]'::jsonb,
   symbol_legend jsonb default '[]'::jsonb,
+  boq_items jsonb default '[]'::jsonb,
   revision_notes text,
   improvement_request text,
   created_at timestamptz default now()

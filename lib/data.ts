@@ -60,6 +60,11 @@ const demoDesigns: Design[] = [
       { label: "P1 sockets", x: 7, y: 76, targetX: 58, targetY: 65, type: "power" }
     ],
     symbol_legend: DEFAULT_SYMBOL_LEGEND,
+    boq_items: [
+      { category: "Lighting", item: "LED ceiling luminaire", specification: "230V AC, LED, IEC/EU compliant, room-mounted", unit: "pcs", quantity: 12, standard: "EBCS, IEC 60598", notes: "Final wattage by room lux check" },
+      { category: "Power", item: "Schuko socket outlet", specification: "230V, 16A, Type F/EU style with earth", unit: "pcs", quantity: 18, standard: "IEC 60884, EBCS", notes: "Place per approved furniture layout" },
+      { category: "Wiring", item: "Copper cable in PVC conduit", specification: "IEC copper conductors, 1.5/2.5/4 mm2 as circuit requires", unit: "m", quantity: 220, standard: "IEC 60227, IEC 60364", notes: "Verify route length on site" }
+    ],
     revision_notes: null,
     improvement_request: null,
     created_at: new Date().toISOString()

@@ -92,6 +92,16 @@ export type SymbolLegendItem = {
   description: string;
 };
 
+export type BoqItem = {
+  category: string;
+  item: string;
+  specification: string;
+  unit: string;
+  quantity: number;
+  standard: string;
+  notes?: string;
+};
+
 export type Design = {
   id: string;
   floor_id: string;
@@ -102,6 +112,7 @@ export type Design = {
   design_pdf_path: string | null;
   annotations: DesignAnnotation[];
   symbol_legend: SymbolLegendItem[];
+  boq_items: BoqItem[];
   revision_notes: string | null;
   improvement_request: string | null;
   created_at: string;

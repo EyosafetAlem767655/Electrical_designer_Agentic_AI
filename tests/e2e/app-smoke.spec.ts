@@ -18,6 +18,8 @@ test("demo project exposes guarded delete control", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Delete Project/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Submit Revision/i })).toBeVisible();
   await expect(page.getByPlaceholder(/Make labels larger/i)).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Bill Of Quantity/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Export BOQ PDF/i })).toBeVisible();
 });
 
 test("project chat page degrades without xAI credentials", async ({ page }) => {

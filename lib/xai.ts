@@ -1,6 +1,6 @@
 import { DESIGN_PROMPT_RULES, ELECTRICAL_SYSTEM_PROMPT } from "@/lib/constants";
 import { getEnv, requireEnv } from "@/lib/env";
-import type { DesignAnnotation, SymbolLegendItem } from "@/types";
+import type { BoqItem, DesignAnnotation, SymbolLegendItem } from "@/types";
 
 type ChatMessage =
   | { role: "system" | "assistant"; content: string }
@@ -180,6 +180,42 @@ export async function generateQuestions(analysis: Record<string, unknown>, conte
   );
 
   return extractJson<string[]>(text, ["Please confirm room purposes, special equipment, and preferred outlet/lighting requirements."]);
+}
+
+export async function generateBoqItems(context: {
+  projectName: string;
+  floorName: string;
+  buildingPurpose?: string | null;
+  designPlan?: string;
+  requirements: Record<string, unknown>;
+}) {
+  const requirements = compactRequirements(context.requirements);
+  const text = await chatCompletion(
+    [
+      { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `Create a floor-level Bill of Quantity for this Ethiopian/IEC electrical design. Return strict JSON array only. Every item must have category, item, specification, unit, quantity, standard, and notes.
+
+Rules:
+- Use Ethiopian/EBCS and IEC/EU standards, not US/NEC standards.
+- Use 220-230V single-phase, 380-400V three-phase, 50Hz assumptions.
+- Use mm2 copper cable sizes, DIN-rail protection devices, PVC conduit/trunking, IP-rated fittings where needed, Type F/Schuko-style earthed socket outlets where appropriate.
+- Include lighting fixtures for every room/section, switches, socket outlets, DB/protection devices, wiring, conduits, junction boxes, emergency lighting, fire alarm, data/CCTV where applicable.
+- Quantities may be engineering estimates from the plan and must be practical for procurement, with notes saying final quantity is site-verified.
+- Avoid US terms like AWG, NEMA, 120V, 240V split phase, or NEC.
+
+Project: ${context.projectName}
+Floor: ${context.floorName}
+Building purpose: ${context.buildingPurpose ?? "not specified"}
+Design plan: ${limitText(context.designPlan, 1600)}
+Compacted requirements: ${JSON.stringify(requirements)}`
+      }
+    ],
+    0.2
+  );
+
+  return normalizeBoqItems(extractJson<unknown>(text, []), fallbackBoqItems());
 }
 
 async function createDesignPlan(context: {
@@ -380,4 +416,36 @@ export function normalizeLegend(value: unknown, fallback: SymbolLegendItem[]) {
     .filter((item): item is SymbolLegendItem => Boolean(item));
 
   return legend.length ? legend : fallback;
+}
+
+export function fallbackBoqItems(): BoqItem[] {
+  return [
+    { category: "Lighting", item: "LED luminaire", specification: "230V AC LED fitting, IEC/EU compliant", unit: "pcs", quantity: 1, standard: "EBCS, IEC 60598", notes: "Quantity to be expanded per room lighting layout and verified on site" },
+    { category: "Power", item: "Earthed socket outlet", specification: "230V, 16A, Type F/Schuko-style outlet with earth", unit: "pcs", quantity: 1, standard: "IEC 60884, EBCS", notes: "Final location and count by approved layout" },
+    { category: "Wiring", item: "Copper conductors in PVC conduit", specification: "IEC copper conductors in PVC conduit/trunking, mm2 sizing by circuit load", unit: "m", quantity: 1, standard: "IEC 60227, IEC 60364", notes: "Route length to be verified on site" }
+  ];
+}
+
+export function normalizeBoqItems(value: unknown, fallback: BoqItem[]) {
+  if (!Array.isArray(value)) return fallback;
+  const items = value
+    .map((item): BoqItem | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const name = typeof record.item === "string" && record.item.trim() ? record.item.trim() : null;
+      if (!name) return null;
+      const quantity = typeof record.quantity === "number" ? record.quantity : typeof record.quantity === "string" ? Number(record.quantity) : 1;
+      return {
+        category: typeof record.category === "string" && record.category.trim() ? record.category.trim() : "Electrical",
+        item: name,
+        specification: typeof record.specification === "string" && record.specification.trim() ? record.specification.trim() : "IEC/EU compliant electrical material",
+        unit: typeof record.unit === "string" && record.unit.trim() ? record.unit.trim() : "pcs",
+        quantity: Number.isFinite(quantity) && quantity > 0 ? Math.round(quantity * 100) / 100 : 1,
+        standard: typeof record.standard === "string" && record.standard.trim() ? record.standard.trim() : "EBCS, IEC 60364",
+        notes: typeof record.notes === "string" && record.notes.trim() ? record.notes.trim() : "Final quantity to be verified on site"
+      };
+    })
+    .filter((item): item is BoqItem => Boolean(item));
+
+  return items.length ? items : fallback;
 }
