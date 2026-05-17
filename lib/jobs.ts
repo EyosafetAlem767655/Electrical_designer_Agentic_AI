@@ -179,6 +179,9 @@ async function processGenerateDesign(job: Job) {
   const { project, floor } = await getProjectFloor(projectId, floorId);
   const { data: existing } = await supabase.from("designs").select("*").eq("floor_id", floorId).order("version", { ascending: false }).limit(2);
   const version = ((existing?.[0] as Design | undefined)?.version ?? 0) + 1;
+  const sourceImageUrl =
+    floor.architectural_image_url ??
+    (floor.architectural_image_path ? `data:image/png;base64,${await fetchStorageBase64(floor.architectural_image_path)}` : null);
 
   const image = await generateDesignImage({
     projectName: project.project_name,
@@ -188,6 +191,7 @@ async function processGenerateDesign(job: Job) {
     buildingPurpose: project.building_purpose,
     companyName: project.company_name,
     revision: version,
+    sourceImageUrl,
     requirements: {
       ai_analysis: floor.ai_analysis,
       architect_answers: floor.architect_answers,

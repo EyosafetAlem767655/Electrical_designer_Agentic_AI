@@ -132,9 +132,10 @@ export async function generateDesignImage(context: {
   buildingPurpose?: string | null;
   companyName?: string | null;
   revision: number;
+  sourceImageUrl?: string | null;
   requirements: Record<string, unknown>;
 }) {
-  const prompt = `Create a professional electrical installation design drawing for a ${context.buildingPurpose ?? "building"} project.
+  const prompt = `${context.sourceImageUrl ? "Edit the provided architectural floor-plan image. Preserve the original plan geometry, walls, doors, room labels, dimensions, and scale. Draw the electrical design directly on top of this same plan." : "Create a professional electrical installation design drawing for this architectural plan."}
 
 Project: ${context.projectName}
 Floor: ${context.floorName}
@@ -144,15 +145,29 @@ Revision: ${context.revision}
 
 ${DESIGN_PROMPT_RULES}
 
+Overlay requirements:
+- Keep the original architectural image as the base layer.
+- Add electrical symbols, circuit routes, distribution board location, lighting points, switches, sockets, emergency lighting, fire alarm points, data/CCTV where applicable, and clear labels.
+- Use clean drafting-style colored overlays that remain legible against the source plan.
+- Do not invent a different building layout or redraw the architecture from scratch.
+
 Specific requirements and analysis:
 ${JSON.stringify(context.requirements, null, 2)}`;
 
-  const payload = await xaiFetch<{ data?: Array<{ url?: string; b64_json?: string }> }>("images/generations", {
-    model: model("XAI_IMAGE_MODEL", "grok-imagine-image"),
-    prompt,
-    n: 1,
-    size: "1024x1024"
-  });
+  const modelName = model("XAI_IMAGE_MODEL", "grok-imagine-image-quality");
+  const payload = context.sourceImageUrl
+    ? await xaiFetch<{ data?: Array<{ url?: string; b64_json?: string }> }>("images/edits", {
+        model: modelName,
+        prompt,
+        image: {
+          url: context.sourceImageUrl,
+          type: "image_url"
+        }
+      })
+    : await xaiFetch<{ data?: Array<{ url?: string; b64_json?: string }> }>("images/generations", {
+        model: modelName,
+        prompt
+      });
 
   const image = payload.data?.[0];
   if (!image?.url && !image?.b64_json) {
