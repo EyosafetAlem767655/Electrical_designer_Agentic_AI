@@ -5,7 +5,8 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
 import { fallbackBoqFromDesign } from "@/lib/boq";
-import { analyzeFloorPlan, fallbackAnnotations, generateBoqItems, generateDesignDraftImage, generateQuestions, improveDesignTextReadability, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
+import { generateBoqItemsWithOpenAI, improveDesignTextWithOpenAI } from "@/lib/openai";
+import { analyzeFloorPlan, fallbackAnnotations, generateDesignDraftImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
 const MAX_JOB_ATTEMPTS = 3;
@@ -389,7 +390,7 @@ async function processGenerateDesign(job: Job) {
       improvement_request: improvementRequest
     }
   });
-  const image = await improveDesignTextReadability(draftImage, {
+  const image = await improveDesignTextWithOpenAI(draftImage, {
     projectName: project.project_name,
     floorName: floor.floor_name,
     revision: version
@@ -397,7 +398,7 @@ async function processGenerateDesign(job: Job) {
 
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
   const designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
-  const boqItems = await generateBoqItems({
+  const boqItems = await generateBoqItemsWithOpenAI({
     projectName: project.project_name,
     floorName: floor.floor_name,
     buildingPurpose: project.building_purpose,

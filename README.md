@@ -17,6 +17,8 @@ Agentic electrical design dashboard and Telegram intake system for floor-by-floo
 
 Vercel environment variable names are case-sensitive. Use `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_BASE_URL` as the primary Telegram values. `INSTALLER_TELEGRAM_BOT_TOKEN`, `INSTALLER_WEBHOOK_BASE_URL`, and `ORCHESTRATOR_URL` are supported fallbacks, but the primary names are preferred.
 
+The generation pipeline uses Grok for floor-plan analysis, clarification questions, and draft electrical drawing generation. It then uses OpenAI for text-readability image editing and final BOQ generation. Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. Optional model overrides are `OPENAI_IMAGE_MODEL` (default `gpt-image-1.5`) and `OPENAI_BOQ_MODEL` (default `gpt-5.5`).
+
 After adding or changing Vercel environment variables, redeploy the project so runtime functions receive the new values.
 
 ## Supabase Schema Reset
