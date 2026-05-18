@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { getEnv } from "@/lib/env";
 import { processJobs } from "@/lib/jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function authorized(request: Request) {
   const secret = getEnv("JOB_SECRET");
@@ -20,8 +20,21 @@ async function process(request: Request) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
+  const url = new URL(request.url);
+  const background = url.searchParams.get("mode") === "background" || request.headers.get("x-job-mode") === "background";
+  if (background) {
+    after(async () => {
+      try {
+        await processJobs({ maxMs: 280_000 });
+      } catch (error) {
+        console.error("Background job processing failed", error);
+      }
+    });
+    return NextResponse.json({ ok: true, accepted: true });
+  }
+
   try {
-    const result = await processJobs();
+    const result = await processJobs({ maxMs: 280_000 });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Job processing failed" }, { status: 500 });

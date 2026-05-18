@@ -12,19 +12,23 @@ type XaiChatResponse = {
 
 const IMAGE_PROMPT_LIMIT = 8000;
 const IMAGE_PROMPT_TARGET = 7200;
+const DEFAULT_XAI_TIMEOUT_MS = 240_000;
+const READABILITY_PASS_TIMEOUT_MS = 45_000;
 
 function model(name: string, fallback: string) {
   return getEnv(name) ?? fallback;
 }
 
-async function xaiFetch<T>(path: string, body: Record<string, unknown>) {
+async function xaiFetch<T>(path: string, body: Record<string, unknown>, options: { timeoutMs?: number } = {}) {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_XAI_TIMEOUT_MS;
   const response = await fetch(`https://api.x.ai/v1/${path}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${requireEnv("XAI_API_KEY")}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs)
   });
 
   const text = await response.text();
@@ -100,7 +104,7 @@ function compactRequirements(requirements: Record<string, unknown>) {
 
 function clampPrompt(prompt: string) {
   if (prompt.length <= IMAGE_PROMPT_LIMIT) return prompt;
-  return `${prompt.slice(0, IMAGE_PROMPT_TARGET)}\n\n[Context truncated to stay within xAI image prompt limit. Preserve full engineering intent: practical lighting in every room/section, socket outlets in usable rooms, clear switches, DB, circuit numbers, wiring routes, legend, and readable labels.]`;
+  return `${prompt.slice(0, IMAGE_PROMPT_TARGET)}\n\n[Context truncated to stay within xAI image prompt limit. Preserve full engineering intent: practical lighting in every room/section, socket outlets in usable rooms, entrance switches, DB, complete circuit numbers, visible wiring routes, legend, and readable labels. Do not omit complete lighting, switch, and socket outlet circuits because the floor is basement, parking, roof, service, corridor, or any other non-residential area.]`;
 }
 
 export async function chatCompletion(messages: ChatMessage[], temperature = 0.5) {
@@ -231,13 +235,14 @@ async function createDesignPlan(context: {
       {
         role: "user",
         content: `Prepare the final electrician-facing electrical drawing plan before image generation. Be concise but complete. Do not include hidden chain-of-thought. Return a practical checklist with:
-- room-by-room lighting coverage
-- socket outlet coverage
-- switch locations
+- room-by-room lighting coverage for every enclosed room, corridor, stair, lobby, service room, and usable section
+- socket outlet coverage for every habitable, working, service, kitchen, office, shop, equipment, or practical-use area
+- switch locations near entrances and logical switch control for every lighting group
 - DB location and circuit grouping
-- clear wiring/cable route plan
+- clear wiring/cable route plan with separate light, switch/control, and socket outlet circuits
 - emergency lighting, fire alarm, data/CCTV where applicable
 - any real-world assumptions used
+- explicit note that no floor type is exempt from lighting, switch, socket, DB, circuit numbering, and electrician-readable wiring routes
 
 Project: ${context.projectName}
 Floor: ${context.floorName}
@@ -256,9 +261,11 @@ function imageInputFromResult(image: { url?: string; b64_json?: string }) {
 }
 
 async function improveDesignTextReadability(image: { url?: string; b64_json?: string }, context: { projectName: string; floorName: string; revision: number }) {
-  const payload = await xaiFetch<{ data?: Array<{ url?: string; b64_json?: string }> }>("images/edits", {
-    model: model("XAI_IMAGE_MODEL", "grok-imagine-image-quality"),
-    prompt: `Edit this completed electrical design drawing to improve text and label readability only.
+  const payload = await xaiFetch<{ data?: Array<{ url?: string; b64_json?: string }> }>(
+    "images/edits",
+    {
+      model: model("XAI_IMAGE_MODEL", "grok-imagine-image-quality"),
+      prompt: `Edit this completed electrical design drawing to improve text and label readability only.
 
 Preserve the architectural plan, electrical symbols, DB location, lighting points, socket outlets, wiring routes, circuit groupings, and all engineering intent.
 Re-render blurry, distorted, tiny, or unreadable labels as crisp high-contrast technical labels.
@@ -268,11 +275,13 @@ Do not remove lighting or socket outlets. Do not simplify wiring. Do not change 
 Project: ${context.projectName}
 Floor: ${context.floorName}
 Revision: ${context.revision}`,
-    image: {
-      url: imageInputFromResult(image),
-      type: "image_url"
-    }
-  });
+      image: {
+        url: imageInputFromResult(image),
+        type: "image_url"
+      }
+    },
+    { timeoutMs: READABILITY_PASS_TIMEOUT_MS }
+  );
 
   const improved = payload.data?.[0];
   if (!improved?.url && !improved?.b64_json) {
@@ -311,11 +320,13 @@ ${DESIGN_PROMPT_RULES}
 
 Overlay requirements:
 - Keep the original architectural image as the base layer.
-- Add electrical symbols, circuit routes, distribution board location, lighting points, switches, sockets, emergency lighting, fire alarm points, data/CCTV where applicable, and clear labels.
+- Add electrical symbols, circuit routes, distribution board location, lighting points, switches, socket outlets, emergency lighting, fire alarm points, data/CCTV where applicable, and clear labels.
 - Use clean drafting-style colored overlays that remain legible against the source plan.
-- Put lighting points in every room and section, with switch control near entrances.
-- Put socket outlets in every habitable/working room and practical locations for real use.
-- Make wiring routes and circuit numbers obvious enough for electricians to follow.
+- Put lighting points in every room, corridor, stair, lobby, service room, exterior/balcony zone, and usable section, with switch control near entrances.
+- Put socket outlets in every habitable/working room and in practical service/equipment/kitchen/office/shop locations for real use.
+- Draw complete separate circuits for lighting, switch/control runs, and socket outlets. Label each circuit number and show the route back to the DB.
+- No floor type is exempt. Basements, parking, roofs, service floors, corridors, and utility areas still need appropriate lighting, switches, sockets where practical, DB/circuit logic, and visible wiring routes.
+- Make wiring routes and circuit numbers obvious enough for electricians to follow without guessing.
 - Do not invent a different building layout or redraw the architecture from scratch.
 
 Prepared engineering drawing plan:
@@ -344,11 +355,15 @@ ${limitText(compactedRequirements, 2200)}`);
     throw new Error("xAI image generation returned no image");
   }
 
-  return improveDesignTextReadability(firstPassImage, {
-    projectName: context.projectName,
-    floorName: context.floorName,
-    revision: context.revision
-  });
+  try {
+    return await improveDesignTextReadability(firstPassImage, {
+      projectName: context.projectName,
+      floorName: context.floorName,
+      revision: context.revision
+    });
+  } catch {
+    return firstPassImage;
+  }
 }
 
 export async function chatWithProjectContext(question: string, context: Record<string, unknown>) {

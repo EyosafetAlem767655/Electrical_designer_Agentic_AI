@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
     const job = await createJob("pdf_compile", input);
-    void triggerJobProcessing();
+    await triggerJobProcessing();
     return NextResponse.json({ ok: true, job, note: "Full package compilation job queued." }, { status: 202 });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "PDF compilation enqueue failed" }, { status: 400 });

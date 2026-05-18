@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
     const job = await createJob("generate_design", input);
-    void triggerJobProcessing();
+    await triggerJobProcessing();
     return NextResponse.json({ ok: true, job }, { status: 202 });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Design generation enqueue failed" }, { status: 400 });

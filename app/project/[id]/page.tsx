@@ -128,8 +128,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                   </p>
                   <RetryJobButton jobId={failedJobs[0].id} />
                 </div>
+              ) : activeJobs[0] ? (
+                <div className="mt-3 rounded border border-[#d6b17d]/24 bg-[#d6b17d]/10 p-3 text-sm leading-5 text-[#fffaf0]">
+                  <p>
+                    {activeJobs[0].type}: {activeJobs[0].status}
+                    {activeJobs[0].error ? ` - ${activeJobs[0].error}` : ""}
+                  </p>
+                  <RetryJobButton jobId={activeJobs[0].id} label="Recover Job" />
+                  <p className="mt-2 text-xs text-[#efe4d4]/58">Recovery is allowed after the processor has been stuck for several minutes.</p>
+                </div>
               ) : (
-                <p className="mt-3 text-xs text-[#c9b9a6]/52">Cron and enqueue triggers process PDF, AI, revision, and package jobs automatically.</p>
+                <p className="mt-3 text-xs text-[#c9b9a6]/52">Cron and enqueue triggers process image, AI, revision, and package jobs automatically.</p>
               )}
             </div>
           </div>

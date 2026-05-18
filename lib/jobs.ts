@@ -8,6 +8,9 @@ import { fallbackBoqFromDesign } from "@/lib/boq";
 import { analyzeFloorPlan, fallbackAnnotations, generateBoqItems, generateDesignImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
+const MAX_JOB_ATTEMPTS = 3;
+const STALE_PROCESSING_MINUTES = 8;
+
 export async function createJob(type: JobType, payload: Record<string, unknown>) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase.from("jobs").insert({ type, payload }).select("*").single();
@@ -35,9 +38,12 @@ export async function triggerJobProcessing() {
   const baseUrl = getBaseUrl();
   const secret = getEnv("JOB_SECRET") ?? getEnv("CRON_SECRET");
   try {
-    await fetch(`${baseUrl}/api/jobs/process`, {
+    await fetch(`${baseUrl}/api/jobs/process?mode=background`, {
       method: "POST",
-      headers: secret ? { "x-job-secret": secret } : undefined
+      headers: {
+        ...(secret ? { "x-job-secret": secret } : {}),
+        "x-job-mode": "background"
+      }
     });
   } catch {
     // Cron/manual processing remains the durable fallback.
@@ -46,6 +52,20 @@ export async function triggerJobProcessing() {
 
 export async function retryFailedJob(jobId: string) {
   const supabase = getSupabaseAdmin();
+  const { data: existing, error: lookupError } = await supabase.from("jobs").select("*").eq("id", jobId).single();
+  if (lookupError) throw lookupError;
+
+  const current = existing as Job;
+  const staleBefore = Date.now() - STALE_PROCESSING_MINUTES * 60_000;
+  if (current.status === "processing" && new Date(current.updated_at).getTime() > staleBefore) {
+    throw new Error(`Job is still processing. Wait ${STALE_PROCESSING_MINUTES} minutes before recovering it, or check the job processor logs.`);
+  }
+
+  if (current.status === "pending") {
+    await triggerJobProcessing();
+    return current;
+  }
+
   const { data, error } = await supabase
     .from("jobs")
     .update({
@@ -55,16 +75,59 @@ export async function retryFailedJob(jobId: string) {
       run_after: new Date().toISOString()
     })
     .eq("id", jobId)
-    .eq("status", "failed")
     .select("*")
     .single();
   if (error) throw error;
-  void triggerJobProcessing();
+  await prepareRetriedJob(data as Job);
+  await triggerJobProcessing();
   return data as Job;
+}
+
+async function prepareRetriedJob(job: Job) {
+  if (job.type !== "generate_design" && job.type !== "revision_design") return;
+  const { projectId, floorId } = job.payload as { projectId?: string; floorId?: string };
+  if (!projectId || !floorId) return;
+  const supabase = getSupabaseAdmin();
+  await Promise.all([
+    supabase.from("floors").update({ status: "designing" }).eq("id", floorId),
+    supabase.from("bot_sessions").update({ state: "DESIGNING", current_floor_id: floorId }).eq("project_id", projectId)
+  ]);
+}
+
+async function recoverStaleProcessingJobs() {
+  const supabase = getSupabaseAdmin();
+  const staleBefore = new Date(Date.now() - STALE_PROCESSING_MINUTES * 60_000).toISOString();
+  const { data, error } = await supabase
+    .from("jobs")
+    .select("*")
+    .eq("status", "processing")
+    .lte("updated_at", staleBefore)
+    .order("updated_at", { ascending: true })
+    .limit(5);
+  if (error) throw error;
+
+  for (const job of (data ?? []) as Job[]) {
+    const message = `Job timed out or was interrupted while processing for more than ${STALE_PROCESSING_MINUTES} minutes.`;
+    if (job.attempts >= MAX_JOB_ATTEMPTS) {
+      await supabase.from("jobs").update({ status: "failed", error: message }).eq("id", job.id);
+      await applyJobFailureSideEffects(job, message);
+      continue;
+    }
+
+    await supabase
+      .from("jobs")
+      .update({
+        status: "pending",
+        error: `${message} Retrying automatically.`,
+        run_after: new Date().toISOString()
+      })
+      .eq("id", job.id);
+  }
 }
 
 async function claimNextJob() {
   const supabase = getSupabaseAdmin();
+  await recoverStaleProcessingJobs();
   const { data: jobs, error } = await supabase
     .from("jobs")
     .select("*")
@@ -96,9 +159,9 @@ async function completeJob(jobId: string) {
 async function failJob(job: Job, error: unknown) {
   const supabase = getSupabaseAdmin();
   const message = jobErrorMessage(error);
-  const maxAttempts = 3;
-  if (job.attempts >= maxAttempts) {
+  if (job.attempts >= MAX_JOB_ATTEMPTS) {
     await supabase.from("jobs").update({ status: "failed", error: message }).eq("id", job.id);
+    await applyJobFailureSideEffects(job, message);
     return;
   }
 
@@ -111,6 +174,30 @@ async function failJob(job: Job, error: unknown) {
       run_after: new Date(Date.now() + backoffMs).toISOString()
     })
     .eq("id", job.id);
+}
+
+async function applyJobFailureSideEffects(job: Job, message: string) {
+  if (job.type !== "generate_design" && job.type !== "revision_design") return;
+  const { projectId, floorId } = job.payload as { projectId?: string; floorId?: string };
+  if (!projectId || !floorId) return;
+
+  const supabase = getSupabaseAdmin();
+  await Promise.all([
+    supabase.from("floors").update({ status: "questions_sent" }).eq("id", floorId),
+    supabase.from("bot_sessions").update({ state: "AWAITING_ANSWERS", current_floor_id: floorId }).eq("project_id", projectId)
+  ]);
+
+  const { data: project } = await supabase.from("projects").select("telegram_chat_id").eq("id", projectId).maybeSingle();
+  const text = `Design generation did not finish. The engineering dashboard now shows the failed job and can retry it. Error: ${message}`;
+  await supabase.from("conversations").insert({ project_id: projectId, floor_id: floorId, sender: "bot", message: text });
+  const chatId = (project as { telegram_chat_id?: number | null } | null)?.telegram_chat_id;
+  if (chatId) {
+    try {
+      await sendTelegramMessage(chatId, text);
+    } catch (sendError) {
+      console.error("Failed to notify architect about design job failure", sendError);
+    }
+  }
 }
 
 function imageExtension(filename?: string, contentType?: string) {
@@ -253,6 +340,22 @@ async function processGenerateDesign(job: Job) {
   const sourceImageUrl =
     floor.architectural_image_url ??
     (floor.architectural_image_path ? `data:image/png;base64,${await fetchStorageBase64(floor.architectural_image_path)}` : null);
+  const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
+  const legend = normalizeLegend((floor.ai_analysis as Record<string, unknown>)?.symbol_legend, DEFAULT_SYMBOL_LEGEND);
+  const boqContext = {
+    ai_analysis: floor.ai_analysis,
+    architect_answers: floor.architect_answers,
+    special_requirements: project.special_requirements,
+    improvement_request: improvementRequest,
+    symbol_legend: legend,
+    annotations
+  };
+  const boqItemsPromise = generateBoqItems({
+    projectName: project.project_name,
+    floorName: floor.floor_name,
+    buildingPurpose: project.building_purpose,
+    requirements: boqContext
+  }).catch(() => fallbackBoqFromDesign({ symbol_legend: legend }));
 
   const image = await generateDesignImage({
     projectName: project.project_name,
@@ -275,22 +378,7 @@ async function processGenerateDesign(job: Job) {
 
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
   const designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
-  const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
-  const legend = normalizeLegend((floor.ai_analysis as Record<string, unknown>)?.symbol_legend, DEFAULT_SYMBOL_LEGEND);
-  const boqContext = {
-    ai_analysis: floor.ai_analysis,
-    architect_answers: floor.architect_answers,
-    special_requirements: project.special_requirements,
-    improvement_request: improvementRequest,
-    symbol_legend: legend,
-    annotations
-  };
-  const boqItems = await generateBoqItems({
-    projectName: project.project_name,
-    floorName: floor.floor_name,
-    buildingPurpose: project.building_purpose,
-    requirements: boqContext
-  }).catch(() => fallbackBoqFromDesign({ symbol_legend: legend }));
+  const boqItems = await boqItemsPromise;
 
   const designPayload: Record<string, unknown> = {
     floor_id: floorId,

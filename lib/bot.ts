@@ -337,7 +337,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
       filename: image.filename,
       contentType: image.contentType
     });
-    void triggerJobProcessing();
+    await triggerJobProcessing();
     await updateSession(session.id, { state: "ANALYZING", current_floor_id: floor.id });
     await botReply(message.chat.id, project.id, floor.id, "Image received. I am analyzing the floor plan now.");
     return { ok: true };
@@ -350,7 +350,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
     }
     await supabase.from("floors").update({ architect_answers: { raw: text }, status: "designing" }).eq("id", session.current_floor_id);
     await createJob("generate_design", { projectId: project.id, floorId: session.current_floor_id });
-    void triggerJobProcessing();
+    await triggerJobProcessing();
     await updateSession(session.id, { state: "DESIGNING" });
     await botReply(message.chat.id, project.id, session.current_floor_id, "Thank you. I am generating the electrical design and will send it for engineering review.");
     return { ok: true };

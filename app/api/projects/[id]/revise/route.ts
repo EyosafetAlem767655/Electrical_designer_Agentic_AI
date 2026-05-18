@@ -19,7 +19,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     await supabase.from("floors").update({ status: "revision_requested" }).eq("id", input.floorId);
     await supabase.from("conversations").insert({ project_id: projectId, floor_id: input.floorId, sender: "admin", message: `Revision requested: ${input.notes}` });
     const job = await createJob("revision_design", { projectId, floorId: input.floorId, improvementRequest: input.notes });
-    void triggerJobProcessing();
+    await triggerJobProcessing();
     return NextResponse.json({ ok: true, job });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Revision request failed" }, { status: 400 });
