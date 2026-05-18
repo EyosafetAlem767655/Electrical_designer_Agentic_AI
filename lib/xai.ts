@@ -2,6 +2,22 @@ import { DESIGN_PROMPT_RULES, ELECTRICAL_SYSTEM_PROMPT } from "@/lib/constants";
 import { getEnv, requireEnv } from "@/lib/env";
 import type { BoqItem, DesignAnnotation, SymbolLegendItem } from "@/types";
 
+export type DrawingTextPlan = {
+  drawingTitle: string;
+  designNotes: string[];
+  circuitSchedule: Array<{
+    circuit: string;
+    system: string;
+    description: string;
+    cable: string;
+    protection: string;
+  }>;
+  callouts: Array<{
+    label: string;
+    description: string;
+  }>;
+};
+
 type ChatMessage =
   | { role: "system" | "assistant"; content: string }
   | { role: "user"; content: string | Array<Record<string, unknown>> };
@@ -99,6 +115,83 @@ function compactRequirements(requirements: Record<string, unknown>) {
     data_cctv_plan: compactList(analysis.data_cctv_plan),
     unclear_items: compactList(analysis.unclear_items),
     electrician_notes: compactList(analysis.electrician_notes, 10)
+  };
+}
+
+function normalizeStringArray(value: unknown, fallback: string[], maxItems: number) {
+  if (!Array.isArray(value)) return fallback;
+  const items = value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean).slice(0, maxItems);
+  return items.length ? items : fallback;
+}
+
+export function fallbackDrawingTextPlan(): DrawingTextPlan {
+  return {
+    drawingTitle: "Electrical Installation Layout",
+    designNotes: [
+      "Lighting, switch, and socket outlet circuits are shown for electrician review.",
+      "Use EBCS and IEC/EU installation practice with copper conductors in PVC conduit or trunking.",
+      "Final device positions, cable lengths, and breaker ratings must be verified on site."
+    ],
+    circuitSchedule: [
+      { circuit: "L1", system: "Lighting", description: "General lighting points and local switch drops", cable: "3 x 1.5 mm2 Cu", protection: "10A SP MCB" },
+      { circuit: "P1", system: "Socket Outlets", description: "General earthed socket outlet radial circuit", cable: "3 x 2.5 mm2 Cu", protection: "16/20A RCBO" },
+      { circuit: "E1", system: "Emergency", description: "Emergency and exit lighting where required", cable: "3 x 1.5 mm2 Cu", protection: "10A SP MCB" },
+      { circuit: "FA1", system: "Fire Alarm", description: "Detector/manual call point loop allowance", cable: "Fire-rated loop cable", protection: "Panel circuit" }
+    ],
+    callouts: [
+      { label: "DB", description: "Distribution board and protective devices" },
+      { label: "L", description: "Lighting circuit with entrance switching" },
+      { label: "P", description: "Socket outlet circuit for practical use areas" },
+      { label: "S", description: "Switch/control drop near room entrance" }
+    ]
+  };
+}
+
+function normalizeDrawingTextPlan(value: unknown): DrawingTextPlan {
+  const fallback = fallbackDrawingTextPlan();
+  if (!value || typeof value !== "object") return fallback;
+  const record = value as Record<string, unknown>;
+  const circuitSchedule = Array.isArray(record.circuitSchedule)
+    ? record.circuitSchedule
+        .map((item): DrawingTextPlan["circuitSchedule"][number] | null => {
+          if (!item || typeof item !== "object") return null;
+          const entry = item as Record<string, unknown>;
+          const circuit = typeof entry.circuit === "string" && entry.circuit.trim() ? entry.circuit.trim().slice(0, 12) : null;
+          const system = typeof entry.system === "string" && entry.system.trim() ? entry.system.trim().slice(0, 28) : null;
+          if (!circuit || !system) return null;
+          return {
+            circuit,
+            system,
+            description: typeof entry.description === "string" && entry.description.trim() ? entry.description.trim().slice(0, 110) : "Electrical circuit shown on layout",
+            cable: typeof entry.cable === "string" && entry.cable.trim() ? entry.cable.trim().slice(0, 34) : "IEC copper cable",
+            protection: typeof entry.protection === "string" && entry.protection.trim() ? entry.protection.trim().slice(0, 34) : "DIN-rail MCB/RCBO"
+          };
+        })
+        .filter((item): item is DrawingTextPlan["circuitSchedule"][number] => Boolean(item))
+        .slice(0, 8)
+    : [];
+
+  const callouts = Array.isArray(record.callouts)
+    ? record.callouts
+        .map((item): DrawingTextPlan["callouts"][number] | null => {
+          if (!item || typeof item !== "object") return null;
+          const entry = item as Record<string, unknown>;
+          const label = typeof entry.label === "string" && entry.label.trim() ? entry.label.trim().slice(0, 18) : null;
+          if (!label) return null;
+          return {
+            label,
+            description: typeof entry.description === "string" && entry.description.trim() ? entry.description.trim().slice(0, 120) : "Electrical note"
+          };
+        })
+        .filter((item): item is DrawingTextPlan["callouts"][number] => Boolean(item))
+        .slice(0, 8)
+    : [];
+
+  return {
+    drawingTitle: typeof record.drawingTitle === "string" && record.drawingTitle.trim() ? record.drawingTitle.trim().slice(0, 80) : fallback.drawingTitle,
+    designNotes: normalizeStringArray(record.designNotes, fallback.designNotes, 5),
+    circuitSchedule: circuitSchedule.length ? circuitSchedule : fallback.circuitSchedule,
+    callouts: callouts.length ? callouts : fallback.callouts
   };
 }
 
@@ -222,6 +315,48 @@ Compacted requirements: ${JSON.stringify(requirements)}`
   return normalizeBoqItems(extractJson<unknown>(text, []), fallbackBoqItems());
 }
 
+export async function generateDrawingTextPlan(context: {
+  projectName: string;
+  floorName: string;
+  buildingPurpose?: string | null;
+  requirements: Record<string, unknown>;
+}) {
+  const requirements = compactRequirements(context.requirements);
+  const text = await chatCompletion(
+    [
+      { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `Return strict JSON only for text that code will render crisply on an electrical drawing sheet. Do not write markdown.
+
+JSON shape:
+{
+  "drawingTitle": "short professional title",
+  "designNotes": ["3-5 concise professional drawing notes"],
+  "circuitSchedule": [
+    {"circuit":"L1","system":"Lighting","description":"...","cable":"3 x 1.5 mm2 Cu","protection":"10A SP MCB"}
+  ],
+  "callouts": [{"label":"DB","description":"..."}]
+}
+
+Rules:
+- The circuit schedule must always include lighting circuits, switch/control drops, socket outlet circuits, DB/protection, and emergency/fire/data circuits when applicable.
+- Use Ethiopian/EBCS and IEC/EU terminology, 220-230V, 50Hz, mm2 copper, DIN-rail MCB/RCBO/RCCB.
+- Keep every field short enough for a technical drawing title block.
+- Use fixed professional language, not vague AI prose.
+
+Project: ${context.projectName}
+Floor: ${context.floorName}
+Building purpose: ${context.buildingPurpose ?? "not specified"}
+Compacted requirements: ${JSON.stringify(requirements)}`
+      }
+    ],
+    0.15
+  );
+
+  return normalizeDrawingTextPlan(extractJson<unknown>(text, fallbackDrawingTextPlan()));
+}
+
 async function createDesignPlan(context: {
   projectName: string;
   floorName: string;
@@ -234,7 +369,7 @@ async function createDesignPlan(context: {
       { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Prepare the final electrician-facing electrical drawing plan before image generation. Be concise but complete. Do not include hidden chain-of-thought. Return a practical checklist with:
+        content: `Prepare the final electrician-facing electrical drawing plan before image generation. Take time to reason through the engineering checklist internally, but do not include hidden chain-of-thought. Return a practical checklist with:
 - room-by-room lighting coverage for every enclosed room, corridor, stair, lobby, service room, and usable section
 - socket outlet coverage for every habitable, working, service, kitchen, office, shop, equipment, or practical-use area
 - switch locations near entrances and logical switch control for every lighting group
@@ -320,13 +455,15 @@ ${DESIGN_PROMPT_RULES}
 
 Overlay requirements:
 - Keep the original architectural image as the base layer.
-- Add electrical symbols, circuit routes, distribution board location, lighting points, switches, socket outlets, emergency lighting, fire alarm points, data/CCTV where applicable, and clear labels.
+- Add electrical symbols, circuit routes, distribution board location, lighting points, switches, socket outlets, emergency lighting, fire alarm points, data/CCTV where applicable.
 - Use clean drafting-style colored overlays that remain legible against the source plan.
+- Draw circuit routes with an outlined drafting style: white halo/outline below the colored route, then colored route on top, so circuits remain readable over any background.
 - Put lighting points in every room, corridor, stair, lobby, service room, exterior/balcony zone, and usable section, with switch control near entrances.
 - Put socket outlets in every habitable/working room and in practical service/equipment/kitchen/office/shop locations for real use.
 - Draw complete separate circuits for lighting, switch/control runs, and socket outlets. Label each circuit number and show the route back to the DB.
 - No floor type is exempt. Basements, parking, roofs, service floors, corridors, and utility areas still need appropriate lighting, switches, sockets where practical, DB/circuit logic, and visible wiring routes.
 - Make wiring routes and circuit numbers obvious enough for electricians to follow without guessing.
+- Keep generated text inside the plan minimal. Main title block, legend, notes, and schedules will be rendered later by code for crisp text.
 - Do not invent a different building layout or redraw the architecture from scratch.
 
 Prepared engineering drawing plan:
