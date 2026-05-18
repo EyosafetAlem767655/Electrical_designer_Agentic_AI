@@ -3,10 +3,9 @@ import { getBaseUrl, getEnv } from "@/lib/env";
 import { convertPdfToPngPages, createFloorPdf, createProjectPackagePdf } from "@/lib/pdf-utils";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
-import { fetchStorageBase64, uploadProjectFile } from "@/lib/storage";
+import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
 import { fallbackBoqFromDesign } from "@/lib/boq";
-import { createProfessionalDrawingSheet } from "@/lib/design-overlay";
-import { analyzeFloorPlan, fallbackAnnotations, fallbackDrawingTextPlan, generateBoqItems, generateDesignImage, generateDrawingTextPlan, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
+import { analyzeFloorPlan, fallbackAnnotations, generateBoqItems, generateDesignImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
 const MAX_JOB_ATTEMPTS = 3;
@@ -218,14 +217,6 @@ async function getProjectFloor(projectId: string, floorId: string) {
   return { project: project as Project, floor: floor as Floor };
 }
 
-async function imageResultToBuffer(image: { url?: string; b64_json?: string }) {
-  if (image.b64_json) return Buffer.from(image.b64_json, "base64");
-  if (!image.url) throw new Error("xAI image generation returned no image");
-  const response = await fetch(image.url);
-  if (!response.ok) throw new Error(`Generated image download failed: ${response.status}`);
-  return Buffer.from(await response.arrayBuffer());
-}
-
 async function processTelegramPdf(job: Job) {
   const { projectId, floorId, fileId, filename } = job.payload as {
     projectId: string;
@@ -365,12 +356,6 @@ async function processGenerateDesign(job: Job) {
     buildingPurpose: project.building_purpose,
     requirements: boqContext
   }).catch(() => fallbackBoqFromDesign({ symbol_legend: legend }));
-  const textPlanPromise = generateDrawingTextPlan({
-    projectName: project.project_name,
-    floorName: floor.floor_name,
-    buildingPurpose: project.building_purpose,
-    requirements: boqContext
-  }).catch(() => fallbackDrawingTextPlan());
 
   const image = await generateDesignImage({
     projectName: project.project_name,
@@ -392,26 +377,8 @@ async function processGenerateDesign(job: Job) {
   });
 
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
+  const designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
   const boqItems = await boqItemsPromise;
-  const textPlan = await textPlanPromise;
-  const generatedImageBuffer = await imageResultToBuffer(image);
-  const finalImageBuffer = await createProfessionalDrawingSheet({
-    imageBuffer: generatedImageBuffer,
-    projectName: project.project_name,
-    projectCode: project.project_code ?? project.id.slice(0, 6).toUpperCase(),
-    floorName: floor.floor_name,
-    floorNumber: floor.floor_number,
-    companyName: project.company_name,
-    revision: version,
-    legend,
-    annotations,
-    boqItems,
-    textPlan
-  }).catch((error) => {
-    console.error("Professional drawing overlay failed; storing generated image", error);
-    return generatedImageBuffer;
-  });
-  const designUrl = await uploadProjectFile(imagePath, finalImageBuffer, "image/png");
 
   const designPayload: Record<string, unknown> = {
     floor_id: floorId,

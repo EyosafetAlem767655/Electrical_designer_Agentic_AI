@@ -49,9 +49,12 @@ export const DESIGN_PROMPT_RULES = `CRITICAL DRAWING RULES:
 - Switches must be placed near room entrances and connected logically to lighting points.
 - Circuit numbers must be visible on each run.
 - Cable routes must be thick, clear, dashed where appropriate, and follow walls/ceilings where practical so electricians can understand routing.
-- ALL text labels and annotations must be outside the floor plan boundary, connected with thin leader lines.
-- Use large, crisp, high-contrast labels; avoid tiny text, blurry text, decorative fonts, or fake unreadable drafting notes.
-- Include a simple readable symbol legend and title block with project, floor, drawing number, scale, date, Elec Nova Tech AI, checker, company, and revision.`;
+- Use consistent professional drafting text: uppercase where appropriate, straight baseline, crisp black or dark-blue lettering, simple sans-serif/CAD style, no decorative or fake handwritten text.
+- Keep labels close to the relevant symbol or route without covering important architecture; use short leader lines only when needed.
+- Use compact labels only: DB, L1/L2 lighting, S1/S2 switches, P1/P2 socket circuits, E1 emergency, FA1 fire alarm, D1 data/CCTV.
+- Include a small readable symbol legend and title block only in existing empty drawing margins or the bottom/right margin of the original plan if space exists.
+- Do not create a new sheet layout, side panel, large blank box, thick decorative border, or empty annotation rectangles.
+- Do not add fake illegible notes. If text cannot be kept readable, use fewer shorter labels instead of blurry long sentences.`;
 
 export function makeProjectCode(projectName: string) {
   const compact = projectName.replace(/[^a-z0-9]/gi, "").toUpperCase();

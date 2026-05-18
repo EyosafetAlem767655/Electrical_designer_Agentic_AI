@@ -2,22 +2,6 @@ import { DESIGN_PROMPT_RULES, ELECTRICAL_SYSTEM_PROMPT } from "@/lib/constants";
 import { getEnv, requireEnv } from "@/lib/env";
 import type { BoqItem, DesignAnnotation, SymbolLegendItem } from "@/types";
 
-export type DrawingTextPlan = {
-  drawingTitle: string;
-  designNotes: string[];
-  circuitSchedule: Array<{
-    circuit: string;
-    system: string;
-    description: string;
-    cable: string;
-    protection: string;
-  }>;
-  callouts: Array<{
-    label: string;
-    description: string;
-  }>;
-};
-
 type ChatMessage =
   | { role: "system" | "assistant"; content: string }
   | { role: "user"; content: string | Array<Record<string, unknown>> };
@@ -115,83 +99,6 @@ function compactRequirements(requirements: Record<string, unknown>) {
     data_cctv_plan: compactList(analysis.data_cctv_plan),
     unclear_items: compactList(analysis.unclear_items),
     electrician_notes: compactList(analysis.electrician_notes, 10)
-  };
-}
-
-function normalizeStringArray(value: unknown, fallback: string[], maxItems: number) {
-  if (!Array.isArray(value)) return fallback;
-  const items = value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean).slice(0, maxItems);
-  return items.length ? items : fallback;
-}
-
-export function fallbackDrawingTextPlan(): DrawingTextPlan {
-  return {
-    drawingTitle: "Electrical Installation Layout",
-    designNotes: [
-      "Lighting, switch, and socket outlet circuits are shown for electrician review.",
-      "Use EBCS and IEC/EU installation practice with copper conductors in PVC conduit or trunking.",
-      "Final device positions, cable lengths, and breaker ratings must be verified on site."
-    ],
-    circuitSchedule: [
-      { circuit: "L1", system: "Lighting", description: "General lighting points and local switch drops", cable: "3 x 1.5 mm2 Cu", protection: "10A SP MCB" },
-      { circuit: "P1", system: "Socket Outlets", description: "General earthed socket outlet radial circuit", cable: "3 x 2.5 mm2 Cu", protection: "16/20A RCBO" },
-      { circuit: "E1", system: "Emergency", description: "Emergency and exit lighting where required", cable: "3 x 1.5 mm2 Cu", protection: "10A SP MCB" },
-      { circuit: "FA1", system: "Fire Alarm", description: "Detector/manual call point loop allowance", cable: "Fire-rated loop cable", protection: "Panel circuit" }
-    ],
-    callouts: [
-      { label: "DB", description: "Distribution board and protective devices" },
-      { label: "L", description: "Lighting circuit with entrance switching" },
-      { label: "P", description: "Socket outlet circuit for practical use areas" },
-      { label: "S", description: "Switch/control drop near room entrance" }
-    ]
-  };
-}
-
-function normalizeDrawingTextPlan(value: unknown): DrawingTextPlan {
-  const fallback = fallbackDrawingTextPlan();
-  if (!value || typeof value !== "object") return fallback;
-  const record = value as Record<string, unknown>;
-  const circuitSchedule = Array.isArray(record.circuitSchedule)
-    ? record.circuitSchedule
-        .map((item): DrawingTextPlan["circuitSchedule"][number] | null => {
-          if (!item || typeof item !== "object") return null;
-          const entry = item as Record<string, unknown>;
-          const circuit = typeof entry.circuit === "string" && entry.circuit.trim() ? entry.circuit.trim().slice(0, 12) : null;
-          const system = typeof entry.system === "string" && entry.system.trim() ? entry.system.trim().slice(0, 28) : null;
-          if (!circuit || !system) return null;
-          return {
-            circuit,
-            system,
-            description: typeof entry.description === "string" && entry.description.trim() ? entry.description.trim().slice(0, 110) : "Electrical circuit shown on layout",
-            cable: typeof entry.cable === "string" && entry.cable.trim() ? entry.cable.trim().slice(0, 34) : "IEC copper cable",
-            protection: typeof entry.protection === "string" && entry.protection.trim() ? entry.protection.trim().slice(0, 34) : "DIN-rail MCB/RCBO"
-          };
-        })
-        .filter((item): item is DrawingTextPlan["circuitSchedule"][number] => Boolean(item))
-        .slice(0, 8)
-    : [];
-
-  const callouts = Array.isArray(record.callouts)
-    ? record.callouts
-        .map((item): DrawingTextPlan["callouts"][number] | null => {
-          if (!item || typeof item !== "object") return null;
-          const entry = item as Record<string, unknown>;
-          const label = typeof entry.label === "string" && entry.label.trim() ? entry.label.trim().slice(0, 18) : null;
-          if (!label) return null;
-          return {
-            label,
-            description: typeof entry.description === "string" && entry.description.trim() ? entry.description.trim().slice(0, 120) : "Electrical note"
-          };
-        })
-        .filter((item): item is DrawingTextPlan["callouts"][number] => Boolean(item))
-        .slice(0, 8)
-    : [];
-
-  return {
-    drawingTitle: typeof record.drawingTitle === "string" && record.drawingTitle.trim() ? record.drawingTitle.trim().slice(0, 80) : fallback.drawingTitle,
-    designNotes: normalizeStringArray(record.designNotes, fallback.designNotes, 5),
-    circuitSchedule: circuitSchedule.length ? circuitSchedule : fallback.circuitSchedule,
-    callouts: callouts.length ? callouts : fallback.callouts
   };
 }
 
@@ -315,48 +222,6 @@ Compacted requirements: ${JSON.stringify(requirements)}`
   return normalizeBoqItems(extractJson<unknown>(text, []), fallbackBoqItems());
 }
 
-export async function generateDrawingTextPlan(context: {
-  projectName: string;
-  floorName: string;
-  buildingPurpose?: string | null;
-  requirements: Record<string, unknown>;
-}) {
-  const requirements = compactRequirements(context.requirements);
-  const text = await chatCompletion(
-    [
-      { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `Return strict JSON only for text that code will render crisply on an electrical drawing sheet. Do not write markdown.
-
-JSON shape:
-{
-  "drawingTitle": "short professional title",
-  "designNotes": ["3-5 concise professional drawing notes"],
-  "circuitSchedule": [
-    {"circuit":"L1","system":"Lighting","description":"...","cable":"3 x 1.5 mm2 Cu","protection":"10A SP MCB"}
-  ],
-  "callouts": [{"label":"DB","description":"..."}]
-}
-
-Rules:
-- The circuit schedule must always include lighting circuits, switch/control drops, socket outlet circuits, DB/protection, and emergency/fire/data circuits when applicable.
-- Use Ethiopian/EBCS and IEC/EU terminology, 220-230V, 50Hz, mm2 copper, DIN-rail MCB/RCBO/RCCB.
-- Keep every field short enough for a technical drawing title block.
-- Use fixed professional language, not vague AI prose.
-
-Project: ${context.projectName}
-Floor: ${context.floorName}
-Building purpose: ${context.buildingPurpose ?? "not specified"}
-Compacted requirements: ${JSON.stringify(requirements)}`
-      }
-    ],
-    0.15
-  );
-
-  return normalizeDrawingTextPlan(extractJson<unknown>(text, fallbackDrawingTextPlan()));
-}
-
 async function createDesignPlan(context: {
   projectName: string;
   floorName: string;
@@ -400,12 +265,16 @@ async function improveDesignTextReadability(image: { url?: string; b64_json?: st
     "images/edits",
     {
       model: model("XAI_IMAGE_MODEL", "grok-imagine-image-quality"),
-      prompt: `Edit this completed electrical design drawing to improve text and label readability only.
+      prompt: `TEXT READABILITY CORRECTION ONLY. This is a preservation edit, not a redesign.
 
-Preserve the architectural plan, electrical symbols, DB location, lighting points, socket outlets, wiring routes, circuit groupings, and all engineering intent.
-Re-render blurry, distorted, tiny, or unreadable labels as crisp high-contrast technical labels.
-Make circuit numbers, DB labels, legend text, title block text, room-facing callouts, and leader-line labels readable to electricians.
-Do not remove lighting or socket outlets. Do not simplify wiring. Do not change the building layout.
+Keep the exact same electrical design: architectural plan, walls, doors, room geometry, electrical symbols, DB location, lighting points, socket outlets, switches, wiring routes, circuit grouping, cable paths, colors, and circuit topology must stay unchanged.
+Only improve blurry, distorted, tiny, or misspelled text labels.
+Rewrite labels as short professional drafting labels with crisp high-contrast CAD-style text.
+Use compact labels such as DB, L1, L2, S1, S2, P1, P2, E1, FA1, D1, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
+Preserve the existing title block and legend location if present; only sharpen or correct their text.
+Do not create a new sheet, side panel, blank box, large border, new title block area, or empty annotation rectangles.
+Do not redraw the electrical design. Do not move, remove, simplify, or add circuits while fixing text.
+If a long label cannot be made readable, replace it with a shorter professional label rather than adding large boxes.
 
 Project: ${context.projectName}
 Floor: ${context.floorName}
@@ -463,7 +332,9 @@ Overlay requirements:
 - Draw complete separate circuits for lighting, switch/control runs, and socket outlets. Label each circuit number and show the route back to the DB.
 - No floor type is exempt. Basements, parking, roofs, service floors, corridors, and utility areas still need appropriate lighting, switches, sockets where practical, DB/circuit logic, and visible wiring routes.
 - Make wiring routes and circuit numbers obvious enough for electricians to follow without guessing.
-- Keep generated text inside the plan minimal. Main title block, legend, notes, and schedules will be rendered later by code for crisp text.
+- Text must be professional and readable in the generated image itself: crisp CAD-style lettering, high contrast, aligned horizontally, no pseudo-text, no random scribbles, no misspelled fake labels.
+- Use short standardized labels instead of paragraphs: DB, L1/L2 lighting, S1/S2 switches, P1/P2 socket outlets, E1 emergency, FA1 fire alarm, D1 data/CCTV, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
+- Keep any title block or legend compact and inside available margins of the original plan. Do not add a separate side panel, blank right-hand box, decorative sheet border, or large empty annotation boxes.
 - Do not invent a different building layout or redraw the architecture from scratch.
 
 Prepared engineering drawing plan:

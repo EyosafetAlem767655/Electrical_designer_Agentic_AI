@@ -45,7 +45,9 @@ describe("xAI image generation", () => {
     expect(String(requests[1].body.prompt)).toContain("Draw the electrical design directly on top of this same plan");
     expect(String(requests[1].body.prompt)).toContain("Lighting and socket coverage checklist");
     expect(requests[2].url).toBe("https://api.x.ai/v1/images/edits");
-    expect(String(requests[2].body.prompt)).toContain("improve text and label readability only");
+    expect(String(requests[2].body.prompt)).toContain("TEXT READABILITY CORRECTION ONLY");
+    expect(String(requests[2].body.prompt)).toContain("Do not redraw the electrical design");
+    expect(String(requests[2].body.prompt)).toContain("Do not create a new sheet, side panel, blank box");
   });
 
   it("keeps image edit prompts under xAI's 8000 character limit", async () => {
