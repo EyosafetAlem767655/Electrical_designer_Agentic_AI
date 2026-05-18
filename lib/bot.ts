@@ -1,4 +1,4 @@
-import { createJob, triggerJobProcessing } from "@/lib/jobs";
+import { createJob, createTelegramImageJob, triggerJobProcessing } from "@/lib/jobs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { isPersonNameMatch, isProjectNameMatch, parseBindCommand, parseFloorNames, parsePositiveInteger, parseStartPayload, parseVerificationDetails } from "@/lib/state-machine";
 import { sendProjectInvite, sendTelegramMessage, type TelegramMessage, type TelegramUpdate } from "@/lib/telegram";
@@ -330,7 +330,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
 
     const floor = session.current_floor_id ? ({ id: session.current_floor_id } as Floor) : await currentFloor(project.id, project.current_floor);
     await markFloorImageReceived(floor.id);
-    await createJob("telegram_image", {
+    await createTelegramImageJob({
       projectId: project.id,
       floorId: floor.id,
       fileId: image.fileId,

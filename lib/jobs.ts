@@ -15,6 +15,22 @@ export async function createJob(type: JobType, payload: Record<string, unknown>)
   return data as Job;
 }
 
+function jobErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") return error.message;
+  return String(error);
+}
+
+export async function createTelegramImageJob(payload: Record<string, unknown>) {
+  try {
+    return await createJob("telegram_image", payload);
+  } catch (error) {
+    const message = jobErrorMessage(error);
+    if (!/type|check constraint|violates|telegram_image|schema cache/i.test(message)) throw error;
+    return createJob("telegram_pdf", { ...payload, fileKind: "image" });
+  }
+}
+
 export async function triggerJobProcessing() {
   const baseUrl = getBaseUrl();
   const secret = getEnv("JOB_SECRET") ?? getEnv("CRON_SECRET");
@@ -79,7 +95,7 @@ async function completeJob(jobId: string) {
 
 async function failJob(job: Job, error: unknown) {
   const supabase = getSupabaseAdmin();
-  const message = error instanceof Error ? error.message : String(error);
+  const message = jobErrorMessage(error);
   const maxAttempts = 3;
   if (job.attempts >= maxAttempts) {
     await supabase.from("jobs").update({ status: "failed", error: message }).eq("id", job.id);
@@ -352,7 +368,8 @@ export async function processNextJob() {
   if (!job) return { processed: false };
 
   try {
-    if (job.type === "telegram_pdf") await processTelegramPdf(job);
+    if (job.type === "telegram_pdf" && (job.payload as { fileKind?: string }).fileKind === "image") await processTelegramImage(job);
+    else if (job.type === "telegram_pdf") await processTelegramPdf(job);
     if (job.type === "telegram_image") await processTelegramImage(job);
     if (job.type === "analyze_floor") await processAnalyzeFloor(job);
     if (job.type === "generate_design" || job.type === "revision_design") await processGenerateDesign(job);
