@@ -191,35 +191,53 @@ export async function generateBoqItems(context: {
   floorName: string;
   buildingPurpose?: string | null;
   designPlan?: string;
+  finalDesignImageUrl?: string | null;
   requirements: Record<string, unknown>;
 }) {
   const requirements = compactRequirements(context.requirements);
-  const text = await chatCompletion(
-    [
-      { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `Create a floor-level Bill of Quantity for this Ethiopian/IEC electrical design. Return strict JSON array only. Every item must have category, item, specification, unit, quantity, standard, and notes.
+  const prompt = `Create a floor-level Bill of Quantity for this Ethiopian/IEC electrical design. Return strict JSON array only. Every item must have category, item, specification, unit, quantity, standard, and notes.
 
 Rules:
 - Use Ethiopian/EBCS and IEC/EU standards, not US/NEC standards.
 - Use 220-230V single-phase, 380-400V three-phase, 50Hz assumptions.
 - Use mm2 copper cable sizes, DIN-rail protection devices, PVC conduit/trunking, IP-rated fittings where needed, Type F/Schuko-style earthed socket outlets where appropriate.
 - Include lighting fixtures for every room/section, switches, socket outlets, DB/protection devices, wiring, conduits, junction boxes, emergency lighting, fire alarm, data/CCTV where applicable.
-- Quantities may be engineering estimates from the plan and must be practical for procurement, with notes saying final quantity is site-verified.
+- If a final design image is provided, count visible symbols and routes from that final cleaned drawing first. Count lighting points, switch points, socket outlets, DB/protection panels, emergency/fire/data devices, and visible conduit/cable route allowances from the image.
+- Quantities must be defensible estimates from the final drawing. Put "site verify final quantity" in notes where route length or exact device count is uncertain.
 - Avoid US terms like AWG, NEMA, 120V, 240V split phase, or NEC.
 
 Project: ${context.projectName}
 Floor: ${context.floorName}
 Building purpose: ${context.buildingPurpose ?? "not specified"}
 Design plan: ${limitText(context.designPlan, 1600)}
-Compacted requirements: ${JSON.stringify(requirements)}`
-      }
-    ],
-    0.2
-  );
+Compacted requirements: ${JSON.stringify(requirements)}`;
 
-  return normalizeBoqItems(extractJson<unknown>(text, []), fallbackBoqItems());
+  const messages: ChatMessage[] = context.finalDesignImageUrl
+    ? [
+        { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: [
+            { type: "image_url", image_url: { url: context.finalDesignImageUrl, detail: "high" } },
+            { type: "text", text: prompt }
+          ]
+        }
+      ]
+    : [
+        { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: prompt
+        }
+      ];
+
+  const payload = await xaiFetch<XaiChatResponse>("chat/completions", {
+    model: model("XAI_VISION_MODEL", "grok-4"),
+    messages,
+    temperature: 0.2
+  });
+
+  return normalizeBoqItems(extractJson<unknown>(firstText(payload), []), fallbackBoqItems());
 }
 
 async function createDesignPlan(context: {
@@ -260,7 +278,7 @@ function imageInputFromResult(image: { url?: string; b64_json?: string }) {
   throw new Error("xAI image generation returned no image");
 }
 
-async function improveDesignTextReadability(image: { url?: string; b64_json?: string }, context: { projectName: string; floorName: string; revision: number }) {
+export async function improveDesignTextReadability(image: { url?: string; b64_json?: string }, context: { projectName: string; floorName: string; revision: number }) {
   const payload = await xaiFetch<{ data?: Array<{ url?: string; b64_json?: string }> }>(
     "images/edits",
     {
@@ -294,7 +312,7 @@ Revision: ${context.revision}`,
   return improved;
 }
 
-export async function generateDesignImage(context: {
+export async function generateDesignDraftImage(context: {
   projectName: string;
   projectCode: string;
   floorName: string;
@@ -303,6 +321,7 @@ export async function generateDesignImage(context: {
   companyName?: string | null;
   revision: number;
   sourceImageUrl?: string | null;
+  mode?: "new" | "revision";
   requirements: Record<string, unknown>;
 }) {
   const compactedRequirements = compactRequirements(context.requirements);
@@ -312,7 +331,13 @@ export async function generateDesignImage(context: {
     buildingPurpose: context.buildingPurpose,
     requirements: compactedRequirements
   });
-  const prompt = clampPrompt(`${context.sourceImageUrl ? "Edit the provided architectural floor-plan image. Preserve the original plan geometry, walls, doors, room labels, dimensions, and scale. Draw the electrical design directly on top of this same plan." : "Create a professional electrical installation design drawing for this architectural plan."}
+  const editInstruction =
+    context.mode === "revision"
+      ? "Edit the provided existing electrical design image. Preserve the current design composition, architecture, symbols, circuit routes, DB position, lighting points, switches, socket outlets, and cable topology unless the revision request explicitly asks for a change. Apply the requested revision on top of this existing generated design."
+      : context.sourceImageUrl
+        ? "Edit the provided architectural floor-plan image. Preserve the original plan geometry, walls, doors, room labels, dimensions, and scale. Draw the electrical design directly on top of this same plan."
+        : "Create a professional electrical installation design drawing for this architectural plan.";
+  const prompt = clampPrompt(`${editInstruction}
 
 Project: ${context.projectName}
 Floor: ${context.floorName}
@@ -332,6 +357,7 @@ Overlay requirements:
 - Draw complete separate circuits for lighting, switch/control runs, and socket outlets. Label each circuit number and show the route back to the DB.
 - No floor type is exempt. Basements, parking, roofs, service floors, corridors, and utility areas still need appropriate lighting, switches, sockets where practical, DB/circuit logic, and visible wiring routes.
 - Make wiring routes and circuit numbers obvious enough for electricians to follow without guessing.
+- For revisions, preserve already-correct parts of the existing generated design. Do not restart from the original architectural image. Do not remove existing circuits, outlets, lights, switches, DBs, or labels unless the revision request explicitly says so.
 - Text must be professional and readable in the generated image itself: crisp CAD-style lettering, high contrast, aligned horizontally, no pseudo-text, no random scribbles, no misspelled fake labels.
 - Use short standardized labels instead of paragraphs: DB, L1/L2 lighting, S1/S2 switches, P1/P2 socket outlets, E1 emergency, FA1 fire alarm, D1 data/CCTV, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
 - Keep any title block or legend compact and inside available margins of the original plan. Do not add a separate side panel, blank right-hand box, decorative sheet border, or large empty annotation boxes.
@@ -363,15 +389,16 @@ ${limitText(compactedRequirements, 2200)}`);
     throw new Error("xAI image generation returned no image");
   }
 
-  try {
-    return await improveDesignTextReadability(firstPassImage, {
-      projectName: context.projectName,
-      floorName: context.floorName,
-      revision: context.revision
-    });
-  } catch {
-    return firstPassImage;
-  }
+  return firstPassImage;
+}
+
+export async function generateDesignImage(context: Parameters<typeof generateDesignDraftImage>[0]) {
+  const draft = await generateDesignDraftImage(context);
+  return improveDesignTextReadability(draft, {
+    projectName: context.projectName,
+    floorName: context.floorName,
+    revision: context.revision
+  });
 }
 
 export async function chatWithProjectContext(question: string, context: Record<string, unknown>) {

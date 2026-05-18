@@ -46,8 +46,9 @@ vi.mock("@/lib/xai", () => ({
   analyzeFloorPlan: vi.fn(),
   fallbackAnnotations: vi.fn(),
   generateBoqItems: vi.fn(),
-  generateDesignImage: vi.fn(),
+  generateDesignDraftImage: vi.fn(),
   generateQuestions: vi.fn(),
+  improveDesignTextReadability: vi.fn(),
   normalizeAnnotations: vi.fn(),
   normalizeLegend: vi.fn()
 }));
@@ -56,7 +57,7 @@ vi.mock("@/lib/boq", () => ({
   fallbackBoqFromDesign: vi.fn()
 }));
 
-import { createTelegramImageJob } from "@/lib/jobs";
+import { chooseDesignEditSource, createTelegramImageJob } from "@/lib/jobs";
 
 describe("job enqueue helpers", () => {
   beforeEach(() => {
@@ -88,5 +89,22 @@ describe("job enqueue helpers", () => {
       { table: "jobs", row: { type: "telegram_image", payload } },
       { table: "jobs", row: { type: "telegram_pdf", payload: { ...payload, fileKind: "image" } } }
     ]);
+  });
+
+  it("uses the original image for first designs and latest generated design for revisions", () => {
+    expect(
+      chooseDesignEditSource({
+        originalImageUrl: "https://example.com/original-plan.png",
+        previousDesignImageUrl: "https://example.com/design-v1.png"
+      })
+    ).toBe("https://example.com/original-plan.png");
+
+    expect(
+      chooseDesignEditSource({
+        improvementRequest: "Make labels larger",
+        originalImageUrl: "https://example.com/original-plan.png",
+        previousDesignImageUrl: "https://example.com/design-v1.png"
+      })
+    ).toBe("https://example.com/design-v1.png");
   });
 });

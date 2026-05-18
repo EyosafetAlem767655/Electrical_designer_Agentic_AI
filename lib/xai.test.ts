@@ -90,11 +90,43 @@ describe("xAI image generation", () => {
     expect(imageEditPrompts[1].length).toBeLessThanOrEqual(8000);
   });
 
-  it("generates Ethiopian IEC/EU BOQ items", async () => {
+  it("fails the design image pipeline when text cleanup fails", async () => {
     process.env.XAI_API_KEY = "xai-test";
+    let imageCalls = 0;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => {
+      vi.fn(async (url: string) => {
+        if (String(url).endsWith("/chat/completions")) {
+          return new Response(JSON.stringify({ choices: [{ message: { content: "Design plan" } }] }), { status: 200 });
+        }
+        imageCalls += 1;
+        if (imageCalls === 1) {
+          return new Response(JSON.stringify({ data: [{ url: "https://example.com/draft.png" }] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: { message: "cleanup failed" } }), { status: 500 });
+      })
+    );
+
+    await expect(
+      generateDesignImage({
+        projectName: "Nova Heights",
+        projectCode: "NOVA123",
+        floorName: "Ground Floor",
+        floorNumber: 0,
+        revision: 1,
+        sourceImageUrl: "https://example.com/source-plan.png",
+        requirements: { rooms: ["Lobby"] }
+      })
+    ).rejects.toThrow(/cleanup failed/);
+  });
+
+  it("generates Ethiopian IEC/EU BOQ items", async () => {
+    process.env.XAI_API_KEY = "xai-test";
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown> });
         return new Response(
           JSON.stringify({
             choices: [
@@ -123,9 +155,13 @@ describe("xAI image generation", () => {
     const items = await generateBoqItems({
       projectName: "Nova Heights",
       floorName: "Ground Floor",
+      finalDesignImageUrl: "https://example.com/final-cleaned-design.png",
       requirements: { ai_analysis: { rooms: ["Office"], socket_outlet_plan: ["Four outlets"] } }
     });
 
+    expect(requests[0].url).toBe("https://api.x.ai/v1/chat/completions");
+    expect(JSON.stringify(requests[0].body.messages)).toContain("https://example.com/final-cleaned-design.png");
+    expect(JSON.stringify(requests[0].body.messages)).toContain("count visible symbols and routes from that final cleaned drawing first");
     expect(items[0]).toMatchObject({
       item: "Schuko socket outlet",
       specification: "230V, 16A, Type F earthed outlet",

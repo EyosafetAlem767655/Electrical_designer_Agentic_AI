@@ -5,7 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
 import { fallbackBoqFromDesign } from "@/lib/boq";
-import { analyzeFloorPlan, fallbackAnnotations, generateBoqItems, generateDesignImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
+import { analyzeFloorPlan, fallbackAnnotations, generateBoqItems, generateDesignDraftImage, generateQuestions, improveDesignTextReadability, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
 const MAX_JOB_ATTEMPTS = 3;
@@ -217,6 +217,17 @@ async function getProjectFloor(projectId: string, floorId: string) {
   return { project: project as Project, floor: floor as Floor };
 }
 
+async function designImageInput(design?: Design | null) {
+  if (!design) return null;
+  if (design.design_image_url) return design.design_image_url;
+  if (design.design_image_path) return `data:image/png;base64,${await fetchStorageBase64(design.design_image_path)}`;
+  return null;
+}
+
+export function chooseDesignEditSource(input: { improvementRequest?: string; originalImageUrl: string | null; previousDesignImageUrl?: string | null }) {
+  return input.improvementRequest && input.previousDesignImageUrl ? input.previousDesignImageUrl : input.originalImageUrl;
+}
+
 async function processTelegramPdf(job: Job) {
   const { projectId, floorId, fileId, filename } = job.payload as {
     projectId: string;
@@ -340,6 +351,13 @@ async function processGenerateDesign(job: Job) {
   const sourceImageUrl =
     floor.architectural_image_url ??
     (floor.architectural_image_path ? `data:image/png;base64,${await fetchStorageBase64(floor.architectural_image_path)}` : null);
+  const latestDesign = (existing?.[0] as Design | undefined) ?? null;
+  const revisionSourceImageUrl = improvementRequest ? await designImageInput(latestDesign) : null;
+  const designEditSourceImageUrl = chooseDesignEditSource({
+    improvementRequest,
+    originalImageUrl: sourceImageUrl,
+    previousDesignImageUrl: revisionSourceImageUrl
+  });
   const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
   const legend = normalizeLegend((floor.ai_analysis as Record<string, unknown>)?.symbol_legend, DEFAULT_SYMBOL_LEGEND);
   const boqContext = {
@@ -350,14 +368,8 @@ async function processGenerateDesign(job: Job) {
     symbol_legend: legend,
     annotations
   };
-  const boqItemsPromise = generateBoqItems({
-    projectName: project.project_name,
-    floorName: floor.floor_name,
-    buildingPurpose: project.building_purpose,
-    requirements: boqContext
-  }).catch(() => fallbackBoqFromDesign({ symbol_legend: legend }));
 
-  const image = await generateDesignImage({
+  const draftImage = await generateDesignDraftImage({
     projectName: project.project_name,
     projectCode: project.project_code ?? project.id.slice(0, 6).toUpperCase(),
     floorName: floor.floor_name,
@@ -365,20 +377,36 @@ async function processGenerateDesign(job: Job) {
     buildingPurpose: project.building_purpose,
     companyName: project.company_name,
     revision: version,
-    sourceImageUrl,
+    sourceImageUrl: designEditSourceImageUrl,
+    mode: improvementRequest ? "revision" : "new",
     requirements: {
       ai_analysis: floor.ai_analysis,
       architect_answers: floor.architect_answers,
       special_requirements: project.special_requirements,
       architectural_image_url: floor.architectural_image_url,
-      previous_design: existing?.[0] ?? null,
+      original_architectural_image_url: sourceImageUrl,
+      previous_design: latestDesign,
       improvement_request: improvementRequest
     }
+  });
+  const image = await improveDesignTextReadability(draftImage, {
+    projectName: project.project_name,
+    floorName: floor.floor_name,
+    revision: version
   });
 
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
   const designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
-  const boqItems = await boqItemsPromise;
+  const boqItems = await generateBoqItems({
+    projectName: project.project_name,
+    floorName: floor.floor_name,
+    buildingPurpose: project.building_purpose,
+    finalDesignImageUrl: designUrl,
+    requirements: {
+      ...boqContext,
+      final_design_image_url: designUrl
+    }
+  }).catch(() => fallbackBoqFromDesign({ symbol_legend: legend }));
 
   const designPayload: Record<string, unknown> = {
     floor_id: floorId,
