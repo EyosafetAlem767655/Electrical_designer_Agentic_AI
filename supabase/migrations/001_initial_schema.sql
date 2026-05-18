@@ -35,7 +35,7 @@ create table if not exists floors (
   architectural_image_url text,
   architectural_pdf_path text,
   architectural_image_path text,
-  status text default 'pending' check (status in ('pending', 'pdf_received', 'analyzing', 'questions_sent', 'designing', 'design_ready', 'revision_requested', 'approved')),
+  status text default 'pending' check (status in ('pending', 'pdf_received', 'image_received', 'analyzing', 'questions_sent', 'designing', 'design_ready', 'revision_requested', 'approved')),
   architect_answers jsonb default '{}'::jsonb,
   ai_questions jsonb default '[]'::jsonb,
   ai_analysis jsonb default '{}'::jsonb,
@@ -75,7 +75,7 @@ create table if not exists files (
   id uuid default gen_random_uuid() primary key,
   project_id uuid references projects(id) on delete cascade,
   floor_id uuid references floors(id),
-  file_type text not null check (file_type in ('architectural_pdf', 'floor_screenshot', 'electrical_design', 'final_pdf')),
+  file_type text not null check (file_type in ('architectural_pdf', 'architectural_image', 'floor_screenshot', 'electrical_design', 'final_pdf')),
   storage_path text not null,
   public_url text,
   original_filename text,
@@ -98,7 +98,7 @@ create table if not exists bot_sessions (
 
 create table if not exists jobs (
   id uuid default gen_random_uuid() primary key,
-  type text not null check (type in ('telegram_pdf', 'analyze_floor', 'generate_design', 'revision_design', 'pdf_export', 'pdf_compile')),
+  type text not null check (type in ('telegram_pdf', 'telegram_image', 'analyze_floor', 'generate_design', 'revision_design', 'pdf_export', 'pdf_compile')),
   status text default 'pending' check (status in ('pending', 'processing', 'completed', 'failed')),
   payload jsonb not null default '{}'::jsonb,
   attempts integer default 0,

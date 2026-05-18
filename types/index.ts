@@ -2,6 +2,7 @@ export type ProjectStatus = "created" | "awaiting_verification" | "verified" | "
 export type FloorStatus =
   | "pending"
   | "pdf_received"
+  | "image_received"
   | "analyzing"
   | "questions_sent"
   | "designing"
@@ -16,6 +17,7 @@ export type BotState =
   | "COLLECTING_PURPOSE"
   | "COLLECTING_SPECIAL_REQUIREMENTS"
   | "AWAITING_PDF"
+  | "AWAITING_IMAGE"
   | "ANALYZING"
   | "AWAITING_ANSWERS"
   | "DESIGNING"
@@ -24,6 +26,7 @@ export type BotState =
 
 export type JobType =
   | "telegram_pdf"
+  | "telegram_image"
   | "analyze_floor"
   | "generate_design"
   | "revision_design"

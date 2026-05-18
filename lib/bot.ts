@@ -184,6 +184,31 @@ async function currentFloor(projectId: string, currentFloorIndex: number) {
   return data as Floor;
 }
 
+function imageAttachment(message: TelegramMessage) {
+  const photo = message.photo?.slice().sort((a, b) => (b.width * b.height || b.file_size || 0) - (a.width * a.height || a.file_size || 0))[0];
+  if (photo?.file_id) {
+    return { fileId: photo.file_id, filename: "floor-plan.jpg", contentType: "image/jpeg" };
+  }
+
+  const document = message.document;
+  if (!document?.file_id) return null;
+  const descriptor = `${document.mime_type ?? ""} ${document.file_name ?? ""}`;
+  if (!/(^|\s)image\/(png|jpe?g)|\.(png|jpe?g)$/i.test(descriptor)) return null;
+  return {
+    fileId: document.file_id,
+    filename: document.file_name ?? "floor-plan-image",
+    contentType: document.mime_type && /^image\//i.test(document.mime_type) ? document.mime_type : "image/png"
+  };
+}
+
+async function markFloorImageReceived(floorId: string) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("floors").update({ status: "image_received" }).eq("id", floorId);
+  if (!error) return;
+  if (!/status|check constraint|violates|schema cache/i.test(`${error.message ?? ""} ${error.details ?? ""}`)) throw error;
+  await supabase.from("floors").update({ status: "pdf_received" }).eq("id", floorId);
+}
+
 export async function handleTelegramUpdate(update: TelegramUpdate) {
   const message = update.message;
   if (!message || !message.from || message.from.is_bot) return { ok: true, ignored: true };
@@ -192,7 +217,14 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
   const supabase = getSupabaseAdmin();
   let session = await getOrCreateSession(message);
   const text = message.text?.trim() ?? "";
-  await logMessage(session.project_id, session.current_floor_id, "architect", text || message.document?.file_name || "Attachment", message.document ? "document" : "text", message.message_id);
+  await logMessage(
+    session.project_id,
+    session.current_floor_id,
+    "architect",
+    text || message.document?.file_name || (message.photo?.length ? "Image attachment" : "Attachment"),
+    message.photo?.length ? "photo" : message.document ? "document" : "text",
+    message.message_id
+  );
 
   if (text.startsWith("/start")) {
     const projectHint = parseStartPayload(text);
@@ -284,28 +316,30 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
   if (session.state === "COLLECTING_SPECIAL_REQUIREMENTS") {
     const floor = await currentFloor(project.id, project.current_floor);
     await supabase.from("projects").update({ special_requirements: text }).eq("id", project.id);
-    await updateSession(session.id, { state: "AWAITING_PDF", current_floor_id: floor.id });
-    await botReply(message.chat.id, project.id, floor.id, `Let's begin with the lowest floor. Please send me the architectural floor plan PDF for ${floor.floor_name}.`);
+    await updateSession(session.id, { state: "AWAITING_IMAGE", current_floor_id: floor.id });
+    await botReply(message.chat.id, project.id, floor.id, `Let's begin with the lowest floor. Please send a clear PNG or JPG image of the architectural floor plan for ${floor.floor_name}. For best accuracy, send the original exported image as a file rather than a blurry photo.`);
     return { ok: true };
   }
 
-  if (session.state === "AWAITING_PDF") {
-    if (!message.document?.file_id || !/pdf/i.test(message.document.mime_type ?? message.document.file_name ?? "")) {
-      await botReply(message.chat.id, project.id, session.current_floor_id, "Please upload the architectural floor plan as a PDF document.");
+  if (session.state === "AWAITING_IMAGE" || session.state === "AWAITING_PDF") {
+    const image = imageAttachment(message);
+    if (!image) {
+      await botReply(message.chat.id, project.id, session.current_floor_id, "Please upload the architectural floor plan as a clear PNG or JPG image only. PDFs are no longer accepted for this workflow.");
       return { ok: true };
     }
 
     const floor = session.current_floor_id ? ({ id: session.current_floor_id } as Floor) : await currentFloor(project.id, project.current_floor);
-    await supabase.from("floors").update({ status: "pdf_received" }).eq("id", floor.id);
-    await createJob("telegram_pdf", {
+    await markFloorImageReceived(floor.id);
+    await createJob("telegram_image", {
       projectId: project.id,
       floorId: floor.id,
-      fileId: message.document.file_id,
-      filename: message.document.file_name
+      fileId: image.fileId,
+      filename: image.filename,
+      contentType: image.contentType
     });
     void triggerJobProcessing();
     await updateSession(session.id, { state: "ANALYZING", current_floor_id: floor.id });
-    await botReply(message.chat.id, project.id, floor.id, "PDF received. I am converting and analyzing the floor plan now.");
+    await botReply(message.chat.id, project.id, floor.id, "Image received. I am analyzing the floor plan now.");
     return { ok: true };
   }
 

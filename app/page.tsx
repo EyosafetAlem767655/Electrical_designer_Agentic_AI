@@ -28,7 +28,7 @@ export default async function CommandCenterPage() {
     { label: "Issued", value: completed, icon: CheckCircle2, note: "completed packages" }
   ];
   const queue: Array<{ title: string; copy: string; icon: LucideIcon }> = [
-    { title: "Architect intake", copy: "Verification, floor order, and first PDF handoff.", icon: MessageSquare },
+    { title: "Architect intake", copy: "Verification, floor order, and image handoff.", icon: MessageSquare },
     { title: "AI drafting", copy: "Plan analysis, clarifications, drawing generation.", icon: Bot },
     { title: "Engineer issue", copy: "Review, revise, approve, and export package.", icon: FileCheck2 }
   ];

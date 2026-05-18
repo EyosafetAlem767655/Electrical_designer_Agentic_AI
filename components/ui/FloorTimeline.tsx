@@ -8,7 +8,7 @@ function tone(status: Floor["status"]) {
   if (status === "approved") return "border-[#8fa37c]/42 bg-[#8fa37c]/10 text-[#dfe8d7]";
   if (status === "design_ready") return "border-[#d6b17d]/50 bg-[#6d4c34]/16 text-[#fffaf0]";
   if (status === "revision_requested") return "border-[#d6b17d]/44 bg-[#d6b17d]/10 text-[#f5e1bd]";
-  if (["analyzing", "designing", "questions_sent", "pdf_received"].includes(status)) return "border-[#b89162]/44 bg-[#6d4c34]/12 text-[#efe4d4]";
+  if (["analyzing", "designing", "questions_sent", "pdf_received", "image_received"].includes(status)) return "border-[#b89162]/44 bg-[#6d4c34]/12 text-[#efe4d4]";
   return "border-[#c6a171]/14 bg-white/[0.025] text-[#c9b9a6]/78";
 }
 

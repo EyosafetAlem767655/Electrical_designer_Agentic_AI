@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import { writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { boqItemsForDesign } from "@/lib/boq";
 import type { Design, Floor, Project } from "@/types";
 import type { Pdf } from "pdf-to-img";
 
@@ -137,7 +138,7 @@ export async function createFloorPdf(project: Project, floor: Floor, design: Des
 }
 
 function addBoqPage(doc: jsPDF, project: Project, floor: Floor, design: Design) {
-  const items = Array.isArray(design.boq_items) ? design.boq_items : [];
+  const items = boqItemsForDesign(design);
   doc.addPage([841, 594], "landscape");
   const margin = 22;
   doc.setFont("helvetica", "bold");

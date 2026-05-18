@@ -13,6 +13,7 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
 export const FLOOR_STATUS_LABELS: Record<FloorStatus, string> = {
   pending: "Pending",
   pdf_received: "PDF Received",
+  image_received: "Image Received",
   analyzing: "Analyzing",
   questions_sent: "Questions Sent",
   designing: "Designing",

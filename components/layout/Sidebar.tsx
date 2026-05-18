@@ -42,7 +42,7 @@ export function Sidebar() {
       </nav>
       <div className="mt-8 rounded-[22px_10px_18px_12px] border border-[#1f2a33]/10 bg-white/62 p-3">
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#687580]/70">Studio Flow</p>
-        <p className="mt-2 text-sm leading-5 text-[#1f2a33]/64">Project intake, drawing review, revisions, and PDF issue tracking in one calm workspace.</p>
+        <p className="mt-2 text-sm leading-5 text-[#1f2a33]/64">Project intake, image review, revisions, and PDF issue tracking in one calm workspace.</p>
       </div>
     </aside>
   );

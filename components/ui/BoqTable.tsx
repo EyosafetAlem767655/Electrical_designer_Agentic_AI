@@ -3,16 +3,13 @@
 import { FileDown } from "lucide-react";
 import { useState } from "react";
 import { NeonButton } from "@/components/ui/NeonButton";
-import type { BoqItem, Design, Floor } from "@/types";
-
-function safeBoqItems(design?: Design | null): BoqItem[] {
-  return Array.isArray(design?.boq_items) ? design.boq_items : [];
-}
+import { boqItemsForDesign } from "@/lib/boq";
+import type { Design, Floor } from "@/types";
 
 export function BoqTable({ projectId, floor, design }: { projectId: string; floor?: Floor | null; design?: Design | null }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const items = safeBoqItems(design);
+  const items = design ? boqItemsForDesign(design) : [];
 
   async function exportBoqPdf() {
     if (!floor || !design) return;

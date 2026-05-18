@@ -38,9 +38,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     if (nextFloor) {
       await supabase.from("projects").update({ current_floor: nextFloor.floor_number, status: "in_progress" }).eq("id", projectId);
-      await supabase.from("bot_sessions").update({ state: "AWAITING_PDF", current_floor_id: nextFloor.id }).eq("project_id", projectId);
+      await supabase.from("bot_sessions").update({ state: "AWAITING_IMAGE", current_floor_id: nextFloor.id }).eq("project_id", projectId);
       if (project.telegram_chat_id) {
-        const message = `The design for ${floor.floor_name} has been approved! Please now send the floor plan PDF for the next floor: ${nextFloor.floor_name}.`;
+        const message = `The design for ${floor.floor_name} has been approved! Please now send a clear PNG or JPG floor plan image for the next floor: ${nextFloor.floor_name}.`;
         await sendTelegramMessage(project.telegram_chat_id, message);
         await supabase.from("conversations").insert({ project_id: projectId, floor_id: nextFloor.id, sender: "bot", message });
       }

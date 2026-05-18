@@ -4,6 +4,7 @@ import { convertPdfToPngPages, createFloorPdf, createProjectPackagePdf } from "@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
+import { fallbackBoqFromDesign } from "@/lib/boq";
 import { analyzeFloorPlan, fallbackAnnotations, generateBoqItems, generateDesignImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
@@ -96,6 +97,12 @@ async function failJob(job: Job, error: unknown) {
     .eq("id", job.id);
 }
 
+function imageExtension(filename?: string, contentType?: string) {
+  const value = `${contentType ?? ""} ${filename ?? ""}`.toLowerCase();
+  if (/jpe?g/.test(value)) return "jpg";
+  return "png";
+}
+
 async function getProjectFloor(projectId: string, floorId: string) {
   const supabase = getSupabaseAdmin();
   const [{ data: project, error: projectError }, { data: floor, error: floorError }] = await Promise.all([
@@ -134,6 +141,54 @@ async function processTelegramPdf(job: Job) {
       architectural_pdf_url: pdfUrl,
       architectural_image_url: imageUrl,
       architectural_pdf_path: pdfPath,
+      architectural_image_path: imagePath,
+      status: "analyzing"
+    })
+    .eq("id", floorId);
+
+  await createJob("analyze_floor", { projectId, floorId });
+}
+
+async function processTelegramImage(job: Job) {
+  const { projectId, floorId, fileId, filename, contentType } = job.payload as {
+    projectId: string;
+    floorId: string;
+    fileId: string;
+    filename?: string;
+    contentType?: string;
+  };
+  const supabase = getSupabaseAdmin();
+  const { buffer } = await downloadTelegramFile(fileId);
+  const extension = imageExtension(filename, contentType);
+  const imagePath = `projects/${projectId}/floors/${floorId}/architectural-image.${extension}`;
+  const imageUrl = await uploadProjectFile(imagePath, buffer, extension === "jpg" ? "image/jpeg" : "image/png");
+
+  const { error: fileError } = await supabase.from("files").insert({
+    project_id: projectId,
+    floor_id: floorId,
+    file_type: "architectural_image",
+    storage_path: imagePath,
+    public_url: imageUrl,
+    original_filename: filename ?? `floor-plan.${extension}`
+  });
+  if (fileError && !/file_type|check constraint|violates|schema cache|column/i.test(`${fileError.message ?? ""} ${fileError.details ?? ""}`)) throw fileError;
+  if (fileError) {
+    await supabase.from("files").insert({
+      project_id: projectId,
+      floor_id: floorId,
+      file_type: "floor_screenshot",
+      storage_path: imagePath,
+      public_url: imageUrl,
+      original_filename: filename ?? `floor-plan.${extension}`
+    });
+  }
+
+  await supabase
+    .from("floors")
+    .update({
+      architectural_pdf_url: null,
+      architectural_image_url: imageUrl,
+      architectural_pdf_path: null,
       architectural_image_path: imagePath,
       status: "analyzing"
     })
@@ -206,19 +261,20 @@ async function processGenerateDesign(job: Job) {
   const designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
   const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
   const legend = normalizeLegend((floor.ai_analysis as Record<string, unknown>)?.symbol_legend, DEFAULT_SYMBOL_LEGEND);
+  const boqContext = {
+    ai_analysis: floor.ai_analysis,
+    architect_answers: floor.architect_answers,
+    special_requirements: project.special_requirements,
+    improvement_request: improvementRequest,
+    symbol_legend: legend,
+    annotations
+  };
   const boqItems = await generateBoqItems({
     projectName: project.project_name,
     floorName: floor.floor_name,
     buildingPurpose: project.building_purpose,
-    requirements: {
-      ai_analysis: floor.ai_analysis,
-      architect_answers: floor.architect_answers,
-      special_requirements: project.special_requirements,
-      improvement_request: improvementRequest,
-      symbol_legend: legend,
-      annotations
-    }
-  });
+    requirements: boqContext
+  }).catch(() => fallbackBoqFromDesign({ symbol_legend: legend }));
 
   const designPayload: Record<string, unknown> = {
     floor_id: floorId,
@@ -297,6 +353,7 @@ export async function processNextJob() {
 
   try {
     if (job.type === "telegram_pdf") await processTelegramPdf(job);
+    if (job.type === "telegram_image") await processTelegramImage(job);
     if (job.type === "analyze_floor") await processAnalyzeFloor(job);
     if (job.type === "generate_design" || job.type === "revision_design") await processGenerateDesign(job);
     if (job.type === "pdf_export") await processPdfExport(job);
