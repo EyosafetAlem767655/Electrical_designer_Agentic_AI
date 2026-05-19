@@ -107,7 +107,7 @@ export async function createFloorPdf(project: Project, floor: Floor, design: Des
   doc.setFont("helvetica", "normal");
   design.symbol_legend.slice(0, 6).forEach((item, index) => {
     const y = legendY + 8 + index * 7;
-    doc.text(`${item.symbol} - ${item.label}: ${item.description}`, legendX, y);
+    doc.text(`${item.symbol} - ${item.label}`, legendX, y);
   });
 
   const tbX = 841 - margin - titleBlockWidth;

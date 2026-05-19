@@ -24,5 +24,5 @@ export function fallbackBoqFromDesign(design?: Pick<Design, "symbol_legend"> | n
 }
 
 export function boqItemsForDesign(design?: Design | null): BoqItem[] {
-  return Array.isArray(design?.boq_items) && design.boq_items.length ? design.boq_items : fallbackBoqFromDesign(design);
+  return Array.isArray(design?.boq_items) ? design.boq_items : [];
 }

@@ -56,26 +56,35 @@ async function imageToBlob(image: ImageResult) {
   };
 }
 
-export async function improveDesignTextWithOpenAI(image: ImageResult, context: { projectName: string; floorName: string; revision: number }) {
-  const { blob, filename } = await imageToBlob(image);
+export async function improveDesignTextWithOpenAI(image: ImageResult, context: { projectName: string; floorName: string; revision: number; originalPlanImageUrl?: string | null }) {
+  const modelName = openAiModel("OPENAI_IMAGE_MODEL", "gpt-image-1.5");
   const form = new FormData();
-  form.append("model", openAiModel("OPENAI_IMAGE_MODEL", "gpt-image-1.5"));
-  form.append("image", blob, filename);
+  form.append("model", modelName);
+  if (modelName.startsWith("gpt-image") || modelName.startsWith("chatgpt-image")) {
+    form.append("input_fidelity", "high");
+    form.append("quality", getEnv("OPENAI_IMAGE_QUALITY") ?? "high");
+  }
+  const inputs = context.originalPlanImageUrl ? [{ url: context.originalPlanImageUrl }, image] : [image];
+  for (const [index, input] of inputs.entries()) {
+    const { blob, filename } = await imageToBlob(input);
+    form.append("image", blob, index === 0 && context.originalPlanImageUrl ? `locked-original-plan-${filename}` : filename);
+  }
   form.append("output_format", "png");
   form.append(
     "prompt",
-    `Edit this electrical drawing image to fix blurred or unreadable text only.
+    `Professional electrical drafting enhancement pass.
 
 Hard constraints:
-- The original architectural floor plan is locked. Do not alter, redraw, restyle, crop, stretch, erase, move, or reinterpret any original wall, door, window, stair, column, grid line, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
-- Preserve the exact drawing composition, floor plan, symbols, cable routes, DB location, lighting points, socket outlets, switch points, circuit colors, and circuit topology.
-- Do not redesign, simplify, move, delete, add, convert, or reinterpret electrical devices or routes.
-- Do not convert fluorescent fixtures to LED fixtures. Preserve the device type shown by the design.
-- Do not create a new sheet, side panel, blank box, large border, title-block expansion, or new annotation area.
-- Only sharpen, correct, and rewrite existing text so it is legible.
+- If two input images are provided, the first image is the locked original architectural floor plan and the second image is the draft electrical overlay. Use the first image as the base layer.
+- Preserve the original architectural floor plan exactly. Do not alter, redraw, restyle, crop, stretch, erase, move, or reinterpret any original wall, door, window, stair, column, grid line, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
+- Improve the electrical overlay professionalism only: sharpen line weights, align circuit routes, clean symbol placement, improve contrast, standardize labels, and make the drawing look deployable and electrician-readable.
+- You may complete visibly missing standard electrical overlay items where needed for a deployable design: fluorescent lamp fixtures, manual wall switches, earthed socket outlets, DB labels, route labels, and circuit numbers. Do not change the architectural base plan while doing this.
+- Do not remove existing valid electrical devices or routes. Do not convert fluorescent fixtures to LED fixtures unless the drawing or project explicitly requests LED.
+- Do not create a new sheet, side panel, blank box, large border, title-block expansion, external annotation area, or decorative layout.
 - Do not add leader-arrow callouts, side callout labels, external annotation boxes, or large text panels. Keep compact labels directly beside their electrical symbols/routes inside the drawing.
 - Use short professional CAD labels: DB, FL1, FL2, S1, S2, P1, P2, E1, FA1, D1, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
 - If a label is too long, replace it with a shorter professional equivalent without changing the design.
+- The legend, if present, must be only symbol-to-meaning entries. No notes, quantities, specifications, schedules, or explanatory paragraphs inside the legend.
 
 Project: ${context.projectName}
 Floor: ${context.floorName}

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { generateBoqItems, generateDesignImage } from "@/lib/xai";
+import { generateBoqItems, generateDesignImage, normalizeLegend } from "@/lib/xai";
 
 const originalEnv = { ...process.env };
 
@@ -169,7 +169,9 @@ describe("xAI image generation", () => {
 
     expect(requests[0].url).toBe("https://api.x.ai/v1/chat/completions");
     expect(JSON.stringify(requests[0].body.messages)).toContain("https://example.com/final-cleaned-design.png");
-    expect(JSON.stringify(requests[0].body.messages)).toContain("count visible symbols and routes from that final cleaned drawing first");
+    expect(JSON.stringify(requests[0].body.messages)).toContain("This BOQ must be unique to this exact floor and this exact final design image");
+    expect(JSON.stringify(requests[0].body.messages)).toContain("Count visible symbols and routes from the final cleaned drawing first");
+    expect(JSON.stringify(requests[0].body.messages)).toContain("Do not count from the legend alone");
     expect(items[0]).toMatchObject({
       item: "Schuko socket outlet",
       specification: "230V, 16A, Type F earthed outlet",
@@ -209,5 +211,30 @@ describe("xAI image generation", () => {
         requirements: { ai_analysis: { rooms: ["Parking"] } }
       })
     ).rejects.toThrow(/placeholder quantities/);
+  });
+
+  it("requires the final design image for BOQ generation", async () => {
+    await expect(
+      generateBoqItems({
+        projectName: "Nova Heights",
+        floorName: "Ground Floor",
+        requirements: { ai_analysis: { rooms: ["Office"] } }
+      })
+    ).rejects.toThrow(/Final design image is required/);
+  });
+
+  it("keeps symbol legends to symbol meanings only", () => {
+    const legend = normalizeLegend(
+      [
+        { symbol: "FL", label: "Fluorescent lamp fixture (230V, 2x36W) qty 12", description: "Long specification with quantities" },
+        { symbol: "P", label: "Socket outlet: 16A Type F, count by room", description: "Another long note" }
+      ],
+      []
+    );
+
+    expect(legend).toEqual([
+      { symbol: "FL", label: "Fluorescent lamp fixture", color: "#2f8178", description: "Fluorescent lamp fixture" },
+      { symbol: "P", label: "Socket outlet", color: "#2f8178", description: "Socket outlet" }
+    ]);
   });
 });

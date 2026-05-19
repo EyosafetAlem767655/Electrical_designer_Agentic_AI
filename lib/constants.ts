@@ -56,7 +56,7 @@ export const DESIGN_PROMPT_RULES = `CRITICAL DRAWING RULES:
 - Use consistent professional drafting text: uppercase where appropriate, straight baseline, crisp black or dark-blue lettering, simple sans-serif/CAD style, no decorative or fake handwritten text.
 - Do not use leader-arrow callouts, external annotation boxes, or side callout labels. Put compact drafting labels directly beside the relevant electrical symbol or route inside the drawing area.
 - Use compact labels only: DB, FL1/FL2 fluorescent lighting, S1/S2 manual switches, P1/P2 socket outlets, E1 emergency, FA1 fire alarm, D1 data/CCTV.
-- Include a small readable symbol legend and title block only in existing empty drawing margins or the bottom/right margin of the original plan if space exists.
+- Include a small readable symbol legend only if space exists. The legend must contain only symbol-to-meaning entries, for example "FL - fluorescent lamp", "S - manual switch", "P - socket outlet". Do not put notes, quantities, specifications, schedules, title blocks, or paragraphs in the legend.
 - Do not create a new sheet layout, side panel, large blank box, thick decorative border, or empty annotation rectangles.
 - Do not add fake illegible notes. If text cannot be kept readable, use fewer shorter labels instead of blurry long sentences.`;
 

@@ -62,7 +62,6 @@ export function DesignViewer({ design }: { design?: Design | null }) {
                 </span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-[#fffaf0]">{item.label}</p>
-                  <p className="text-xs text-[#c9b9a6]/58">{item.description}</p>
                 </div>
               </div>
             </div>

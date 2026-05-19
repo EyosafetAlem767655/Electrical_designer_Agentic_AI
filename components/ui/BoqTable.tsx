@@ -79,7 +79,7 @@ export function BoqTable({ projectId, floor, design }: { projectId: string; floo
           </table>
         </div>
       ) : (
-        <p className="px-5 py-5 text-sm text-[#efe4d4]/58">BOQ will appear here after the floor design is generated or revised.</p>
+        <p className="px-5 py-5 text-sm text-[#efe4d4]/58">BOQ is pending. Regenerate or retry the floor design so the BOQ can be counted from this floor&apos;s final design image.</p>
       )}
       {error ? <p className="mx-5 mb-5 rounded border border-rose-300/24 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">{error}</p> : null}
     </section>

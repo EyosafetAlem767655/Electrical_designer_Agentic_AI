@@ -392,7 +392,8 @@ async function processGenerateDesign(job: Job) {
   const image = await improveDesignTextWithOpenAI(draftImage, {
     projectName: project.project_name,
     floorName: floor.floor_name,
-    revision: version
+    revision: version,
+    originalPlanImageUrl: sourceImageUrl
   });
 
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
@@ -418,13 +419,7 @@ async function processGenerateDesign(job: Job) {
     boq_items: boqItems,
     improvement_request: improvementRequest ?? null
   };
-  let { data: design, error } = await supabase.from("designs").insert(designPayload).select("*").single();
-  if (error && /boq_items|schema cache|column/i.test(`${error.message ?? ""} ${error.details ?? ""}`)) {
-    delete designPayload.boq_items;
-    const retry = await supabase.from("designs").insert(designPayload).select("*").single();
-    design = retry.data;
-    error = retry.error;
-  }
+  const { data: design, error } = await supabase.from("designs").insert(designPayload).select("*").single();
   if (error) throw error;
 
   const keep = ((existing ?? []) as Design[]).slice(1).map((item) => item.id);
