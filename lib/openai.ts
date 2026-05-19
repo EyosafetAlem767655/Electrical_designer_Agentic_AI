@@ -165,6 +165,7 @@ export async function generateBoqItemsWithOpenAI(context: {
   floorName: string;
   buildingPurpose?: string | null;
   finalDesignImageUrl: string;
+  grokBoqItems?: BoqItem[];
   requirements: Record<string, unknown>;
 }): Promise<BoqItem[]> {
   const response = await openAiJson<OpenAiChatResponse>("chat/completions", {
@@ -181,7 +182,7 @@ export async function generateBoqItemsWithOpenAI(context: {
           { type: "image_url", image_url: { url: context.finalDesignImageUrl, detail: "high" } },
           {
             type: "text",
-            text: `Create an accurate floor-level Bill of Quantity from this final cleaned electrical design drawing.
+            text: `${context.grokBoqItems?.length ? "Verify and correct the Grok-counted BOQ against this final cleaned electrical design drawing." : "Create an accurate floor-level Bill of Quantity from this final cleaned electrical design drawing."}
 
 Count visible lighting points, switch points, socket outlets, DB/protection panels, emergency lights, fire alarm devices, data/CCTV points, conduit/trunking route allowances, cable runs, junction boxes, and protection devices.
 
@@ -190,12 +191,14 @@ Rules:
 - Every item must have category, item, specification, unit, quantity, standard, and notes.
 - Use Ethiopian/EBCS and IEC/EU assumptions: 220-230V single-phase, 380-400V three-phase, 50Hz, copper conductors in mm2, DIN-rail MCB/RCBO/RCCB, PVC conduit/trunking, Type F/Schuko-style outlets where applicable.
 - Base quantities on visible symbols/routes in the final design image first, then project context.
+- If Grok BOQ items are supplied, treat them as the first-pass count, but correct any missed items, duplicate categories, wrong quantities, wrong units, or weak specifications after inspecting the image yourself.
 - For route lengths, estimate practical quantities and mark notes as site-verified.
 - Avoid AWG, NEMA, 120V, 240V split phase, and NEC.
 
 Project: ${context.projectName}
 Floor: ${context.floorName}
 Building purpose: ${context.buildingPurpose ?? "not specified"}
+Grok first-pass BOQ: ${JSON.stringify(context.grokBoqItems ?? [])}
 Context: ${JSON.stringify(context.requirements)}`
           }
         ]

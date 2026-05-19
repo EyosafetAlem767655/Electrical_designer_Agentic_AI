@@ -74,12 +74,25 @@ describe("OpenAI design finishing", () => {
       projectName: "Nova Heights",
       floorName: "Ground Floor",
       finalDesignImageUrl: "https://example.com/final-cleaned.png",
+      grokBoqItems: [
+        {
+          category: "Lighting",
+          item: "LED luminaire",
+          specification: "230V AC",
+          unit: "pcs",
+          quantity: 12,
+          standard: "EBCS, IEC 60598",
+          notes: "Grok first pass"
+        }
+      ],
       requirements: { rooms: ["Office"] }
     });
 
     expect(requests[0].url).toBe("https://api.openai.com/v1/chat/completions");
     expect(requests[0].body.model).toBe("gpt-5.5");
     expect(JSON.stringify(requests[0].body.messages)).toContain("https://example.com/final-cleaned.png");
+    expect(JSON.stringify(requests[0].body.messages)).toContain("Grok first-pass BOQ");
+    expect(JSON.stringify(requests[0].body.messages)).toContain("correct any missed items");
     expect(requests[0].body.response_format).toMatchObject({ type: "json_schema" });
     expect(items[0]).toMatchObject({ item: "LED luminaire", quantity: 14 });
   });

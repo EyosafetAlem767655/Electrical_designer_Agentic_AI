@@ -6,7 +6,7 @@ import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
 import { fallbackBoqFromDesign } from "@/lib/boq";
 import { generateBoqItemsWithOpenAI, improveDesignTextWithOpenAI } from "@/lib/openai";
-import { analyzeFloorPlan, fallbackAnnotations, generateDesignDraftImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
+import { analyzeFloorPlan, fallbackAnnotations, generateBoqItems, generateDesignDraftImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
 const MAX_JOB_ATTEMPTS = 3;
@@ -398,7 +398,7 @@ async function processGenerateDesign(job: Job) {
 
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
   const designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
-  const boqItems = await generateBoqItemsWithOpenAI({
+  const grokBoqItems = await generateBoqItems({
     projectName: project.project_name,
     floorName: floor.floor_name,
     buildingPurpose: project.building_purpose,
@@ -408,6 +408,18 @@ async function processGenerateDesign(job: Job) {
       final_design_image_url: designUrl
     }
   }).catch(() => fallbackBoqFromDesign({ symbol_legend: legend }));
+  const boqItems = await generateBoqItemsWithOpenAI({
+    projectName: project.project_name,
+    floorName: floor.floor_name,
+    buildingPurpose: project.building_purpose,
+    finalDesignImageUrl: designUrl,
+    grokBoqItems,
+    requirements: {
+      ...boqContext,
+      final_design_image_url: designUrl,
+      grok_boq_items: grokBoqItems
+    }
+  }).catch(() => grokBoqItems);
 
   const designPayload: Record<string, unknown> = {
     floor_id: floorId,

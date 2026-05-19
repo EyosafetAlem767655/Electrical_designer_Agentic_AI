@@ -48,9 +48,13 @@ vi.mock("@/lib/xai", () => ({
   generateBoqItems: vi.fn(),
   generateDesignDraftImage: vi.fn(),
   generateQuestions: vi.fn(),
-  improveDesignTextReadability: vi.fn(),
   normalizeAnnotations: vi.fn(),
   normalizeLegend: vi.fn()
+}));
+
+vi.mock("@/lib/openai", () => ({
+  generateBoqItemsWithOpenAI: vi.fn(),
+  improveDesignTextWithOpenAI: vi.fn()
 }));
 
 vi.mock("@/lib/boq", () => ({
