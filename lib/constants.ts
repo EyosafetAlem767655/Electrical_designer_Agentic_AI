@@ -52,6 +52,7 @@ export const DESIGN_PROMPT_RULES = `CRITICAL DRAWING RULES:
 - Cable routes must be thick, clear, dashed where appropriate, and follow walls/ceilings where practical so electricians can understand routing.
 - Use consistent professional drafting text: uppercase where appropriate, straight baseline, crisp black or dark-blue lettering, simple sans-serif/CAD style, no decorative or fake handwritten text.
 - Keep labels close to the relevant symbol or route without covering important architecture; use short leader lines only when needed.
+- If a leader arrow/callout label is needed, place the text outside the floor-plan boundary in clean margin space and point back to the symbol. Do not cover, trim, crop, shrink, or hide the floor plan sides to make room for callouts.
 - Use compact labels only: DB, L1/L2 lighting, S1/S2 switches, P1/P2 socket circuits, E1 emergency, FA1 fire alarm, D1 data/CCTV.
 - Include a small readable symbol legend and title block only in existing empty drawing margins or the bottom/right margin of the original plan if space exists.
 - Do not create a new sheet layout, side panel, large blank box, thick decorative border, or empty annotation rectangles.

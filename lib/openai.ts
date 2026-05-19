@@ -72,6 +72,7 @@ Hard constraints:
 - Do not convert fluorescent fixtures to LED fixtures. Preserve the device type shown by the design.
 - Do not create a new sheet, side panel, blank box, large border, title-block expansion, or new annotation area.
 - Only sharpen, correct, and rewrite existing text so it is legible.
+- Keep existing arrow/callout labels outside the architectural floor-plan boundary when they are already outside; never move label boxes over the plan or crop the plan to fit text.
 - Use short professional CAD labels: DB, FL1, FL2, S1, S2, P1, P2, E1, FA1, D1, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
 - If a label is too long, replace it with a shorter professional equivalent without changing the design.
 

@@ -312,6 +312,7 @@ Use compact labels such as DB, L1, L2, S1, S2, P1, P2, E1, FA1, D1, 10A MCB, 16A
 Preserve the existing title block and legend location if present; only sharpen or correct their text.
 Do not create a new sheet, side panel, blank box, large border, new title block area, or empty annotation rectangles.
 Do not redraw the electrical design. Do not move, remove, simplify, or add circuits while fixing text.
+Keep existing arrow/callout labels outside the architectural floor-plan boundary when they are already outside; never move label boxes over the plan or crop the plan to fit text.
 If a long label cannot be made readable, replace it with a shorter professional label rather than adding large boxes.
 
 Project: ${context.projectName}
@@ -381,6 +382,7 @@ Overlay requirements:
 - For revisions, preserve already-correct parts of the existing generated design. Do not restart from the original architectural image. Do not remove existing circuits, outlets, lights, switches, DBs, or labels unless the revision request explicitly says so.
 - Text must be professional and readable in the generated image itself: crisp CAD-style lettering, high contrast, aligned horizontally, no pseudo-text, no random scribbles, no misspelled fake labels.
 - Use short standardized labels instead of paragraphs: DB, FL1/FL2 fluorescent lighting, S1/S2 manual switches, P1/P2 socket outlets, E1 emergency, FA1 fire alarm, D1 data/CCTV, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
+- Keep arrow/callout text outside the architectural floor-plan boundary in clean margin space. The plan must remain fully visible edge to edge; do not crop, trim, cover, shrink, or hide the floor-plan sides to fit labels.
 - Keep any title block or legend compact and inside available margins of the original plan. Do not add a separate side panel, blank right-hand box, decorative sheet border, or large empty annotation boxes.
 - Do not invent a different building layout or redraw the architecture from scratch.
 
