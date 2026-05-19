@@ -67,6 +67,7 @@ export async function improveDesignTextWithOpenAI(image: ImageResult, context: {
     `Edit this electrical drawing image to fix blurred or unreadable text only.
 
 Hard constraints:
+- The original architectural floor plan is locked. Do not alter, redraw, restyle, crop, stretch, erase, move, or reinterpret any original wall, door, window, stair, column, grid line, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
 - Preserve the exact drawing composition, floor plan, symbols, cable routes, DB location, lighting points, socket outlets, switch points, circuit colors, and circuit topology.
 - Do not redesign, simplify, move, delete, add, convert, or reinterpret electrical devices or routes.
 - Do not convert fluorescent fixtures to LED fixtures. Preserve the device type shown by the design.

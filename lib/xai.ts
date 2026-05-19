@@ -104,7 +104,7 @@ function compactRequirements(requirements: Record<string, unknown>) {
 
 function clampPrompt(prompt: string) {
   if (prompt.length <= IMAGE_PROMPT_LIMIT) return prompt;
-  return `${prompt.slice(0, IMAGE_PROMPT_TARGET)}\n\n[Context truncated to stay within xAI image prompt limit. Preserve full engineering intent: practical lighting in every room/section, socket outlets in usable rooms, entrance switches, DB, complete circuit numbers, visible wiring routes, legend, and readable labels. Do not omit complete lighting, switch, and socket outlet circuits because the floor is basement, parking, roof, service, corridor, or any other non-residential area.]`;
+  return `${prompt.slice(0, IMAGE_PROMPT_TARGET)}\n\n[Context truncated to stay within xAI image prompt limit. Preserve the original architectural floor plan exactly: do not alter walls, doors, windows, stairs, columns, room boundaries, grid lines, dimensions, room labels, parking bays, or architectural symbols. Preserve full engineering intent: practical lighting in every room/section, socket outlets in usable rooms, entrance switches, DB, complete circuit numbers, visible wiring routes, legend, and readable labels. Do not omit complete lighting, switch, and socket outlet circuits because the floor is basement, parking, roof, service, corridor, or any other non-residential area.]`;
 }
 
 export async function chatCompletion(messages: ChatMessage[], temperature = 0.5) {
@@ -305,6 +305,7 @@ export async function improveDesignTextReadability(image: { url?: string; b64_js
       model: model("XAI_IMAGE_MODEL", "grok-imagine-image-quality"),
       prompt: `TEXT READABILITY CORRECTION ONLY. This is a preservation edit, not a redesign.
 
+The original architectural floor plan is locked. Do not alter, redraw, restyle, crop, stretch, erase, move, or reinterpret any original wall, door, window, stair, column, grid line, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
 Keep the exact same electrical design: architectural plan, walls, doors, room geometry, electrical symbols, DB location, lighting points, socket outlets, switches, wiring routes, circuit grouping, cable paths, colors, and circuit topology must stay unchanged.
 Only improve blurry, distorted, tiny, or misspelled text labels.
 Rewrite labels as short professional drafting labels with crisp high-contrast CAD-style text.
@@ -354,9 +355,9 @@ export async function generateDesignDraftImage(context: {
   });
   const editInstruction =
     context.mode === "revision"
-      ? "Edit the provided existing electrical design image. Preserve the current design composition, architecture, symbols, circuit routes, DB position, lighting points, switches, socket outlets, and cable topology unless the revision request explicitly asks for a change. Apply the requested revision on top of this existing generated design."
+      ? "Edit the provided existing electrical design image as an overlay-only revision. The original architectural floor plan inside it is locked reference geometry and must not change. Preserve the current architecture, walls, doors, room labels, dimensions, stairs, columns, parking bays, symbols, circuit routes, DB position, lighting points, switches, socket outlets, and cable topology unless the revision request explicitly asks for an electrical overlay change. Apply the requested revision on top of this existing generated design."
       : context.sourceImageUrl
-        ? "Edit the provided architectural floor-plan image. Preserve the original plan geometry, walls, doors, room labels, dimensions, and scale. Draw the electrical design directly on top of this same plan."
+        ? "Edit the provided architectural floor-plan image as locked reference geometry. Preserve the original floor plan exactly: walls, doors, windows, stairs, columns, grid lines, room boundaries, parking bays, room labels, dimensions, scale, title text, and architectural symbols must not change. Draw the electrical design only as an overlay directly on top of this same plan."
         : "Create a professional electrical installation design drawing for this architectural plan.";
   const prompt = clampPrompt(`${editInstruction}
 
@@ -370,6 +371,8 @@ ${DESIGN_PROMPT_RULES}
 
 Overlay requirements:
 - Keep the original architectural image as the base layer.
+- Do not modify the base layer. Do not change any architectural geometry, room layout, wall thickness, door swing, stair, column, parking bay, grid, dimension, room label, or title text from the supplied floor plan.
+- Only add electrical overlay content: symbols, routes, circuit labels, DB marks, legends, and electrical notes.
 - Add electrical symbols, circuit routes, distribution board location, lighting points, switches, socket outlets, emergency lighting, fire alarm points, data/CCTV where applicable.
 - Use fluorescent lamp fixtures as the default lighting points, manual wall switches as the default switching/control points, and earthed socket outlets as the default outlet points. Use LED fixtures only if the architect requested LED.
 - Use clean drafting-style colored overlays that remain legible against the source plan.

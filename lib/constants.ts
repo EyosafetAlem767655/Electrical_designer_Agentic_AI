@@ -41,6 +41,8 @@ When analyzing a floor plan, identify rooms, expected load, lighting fixtures, s
 
 export const DESIGN_PROMPT_RULES = `CRITICAL DRAWING RULES:
 - Professional CAD-quality technical drawing, black architectural linework on white background with color-coded electrical circuits.
+- The original architectural floor plan is locked reference geometry. Do not alter, redraw, restyle, crop, stretch, simplify, erase, move, or reinterpret any original wall, door, window, stair, column, grid line, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
+- Draw electrical work only as an overlay on top of the unchanged source plan. The result must look like transparent electrical drafting has been added over the original floor plan, not like a regenerated floor plan.
 - Use IEC 60617 electrical symbols.
 - Lighting circuits yellow, power blue, emergency red, data/telecom green, fire alarm orange.
 - Use fluorescent lamp fixtures as the default lighting device, manual wall switches as the default control device, and earthed socket outlets as the default power outlet device. Use LED fixtures only if the architect/project requirements explicitly request LED.

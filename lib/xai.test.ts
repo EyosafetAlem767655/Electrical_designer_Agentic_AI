@@ -42,10 +42,13 @@ describe("xAI image generation", () => {
       image: { url: "https://example.com/source-plan.png", type: "image_url" }
     });
     expect(requests[1].body).not.toHaveProperty("size");
-    expect(String(requests[1].body.prompt)).toContain("Draw the electrical design directly on top of this same plan");
+    expect(String(requests[1].body.prompt)).toContain("Draw the electrical design only as an overlay directly on top of this same plan");
+    expect(String(requests[1].body.prompt)).toContain("Preserve the original floor plan exactly");
+    expect(String(requests[1].body.prompt)).toContain("Only add electrical overlay content");
     expect(String(requests[1].body.prompt)).toContain("Lighting and socket coverage checklist");
     expect(requests[2].url).toBe("https://api.x.ai/v1/images/edits");
     expect(String(requests[2].body.prompt)).toContain("TEXT READABILITY CORRECTION ONLY");
+    expect(String(requests[2].body.prompt)).toContain("The original architectural floor plan is locked");
     expect(String(requests[2].body.prompt)).toContain("Do not redraw the electrical design");
     expect(String(requests[2].body.prompt)).toContain("Do not create a new sheet, side panel, blank box");
   });
