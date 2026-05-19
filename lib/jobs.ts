@@ -419,7 +419,13 @@ async function processGenerateDesign(job: Job) {
     boq_items: boqItems,
     improvement_request: improvementRequest ?? null
   };
-  const { data: design, error } = await supabase.from("designs").insert(designPayload).select("*").single();
+  let { data: design, error } = await supabase.from("designs").insert(designPayload).select("*").single();
+  if (error && /boq_items|schema cache|column/i.test(`${error.message ?? ""} ${error.details ?? ""}`)) {
+    delete designPayload.boq_items;
+    const retry = await supabase.from("designs").insert(designPayload).select("*").single();
+    design = retry.data;
+    error = retry.error;
+  }
   if (error) throw error;
 
   const keep = ((existing ?? []) as Design[]).slice(1).map((item) => item.id);
