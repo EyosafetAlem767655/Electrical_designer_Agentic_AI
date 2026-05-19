@@ -65,9 +65,10 @@ export async function improveDesignTextWithOpenAI(image: ImageResult, context: {
     form.append("quality", getEnv("OPENAI_IMAGE_QUALITY") ?? "high");
   }
   const inputs = context.originalPlanImageUrl ? [{ url: context.originalPlanImageUrl }, image] : [image];
+  const imageFieldName = inputs.length > 1 ? "image[]" : "image";
   for (const [index, input] of inputs.entries()) {
     const { blob, filename } = await imageToBlob(input);
-    form.append("image", blob, index === 0 && context.originalPlanImageUrl ? `locked-original-plan-${filename}` : filename);
+    form.append(imageFieldName, blob, index === 0 && context.originalPlanImageUrl ? `locked-original-plan-${filename}` : filename);
   }
   form.append("output_format", "png");
   form.append(

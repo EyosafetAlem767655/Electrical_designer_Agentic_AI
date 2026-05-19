@@ -33,7 +33,7 @@ describe("OpenAI design finishing", () => {
     const form = requests[2].init?.body as FormData;
     expect(form.get("model")).toBe("gpt-image-1.5");
     expect(form.get("input_fidelity")).toBe("high");
-    expect(form.getAll("image")).toHaveLength(2);
+    expect(form.getAll("image[]")).toHaveLength(2);
     expect(String(form.get("prompt"))).toContain("Professional electrical drafting enhancement pass");
     expect(String(form.get("prompt"))).toContain("the first image is the locked original architectural floor plan");
     expect(String(form.get("prompt"))).toContain("Preserve the original architectural floor plan exactly");
