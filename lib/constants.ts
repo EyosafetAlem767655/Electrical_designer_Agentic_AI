@@ -51,6 +51,7 @@ export const DESIGN_PROMPT_RULES = `CRITICAL DRAWING RULES:
 - Every room, corridor, stair, lobby, service room, and section must have appropriate lighting points.
 - Every habitable/working room must have socket outlets placed where electricians would expect them; kitchens, offices, shops, bedrooms, halls, and service rooms need multiple outlets when practical.
 - Switches must be placed near room entrances and connected logically to lighting points.
+- For basements and parking floors, treat parking bays, drive aisles, ramps, stair lobbies, lift lobbies, generator/fuel/service rooms, storage rooms, entrances, exits, and corners as separate usable zones. Add fluorescent lighting coverage to every zone, manual switching/control zones at entrances/stairs/service doors, emergency lighting on routes/exits, and practical earthed socket outlets for maintenance/service/security/cleaning points where appropriate.
 - Circuit numbers must be visible on each run.
 - Cable routes must be thick, clear, dashed where appropriate, and follow walls/ceilings where practical so electricians can understand routing.
 - Use consistent professional drafting text: uppercase where appropriate, straight baseline, crisp black or dark-blue lettering, simple sans-serif/CAD style, no decorative or fake handwritten text.

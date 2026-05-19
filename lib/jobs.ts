@@ -398,16 +398,21 @@ async function processGenerateDesign(job: Job) {
 
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
   const designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
-  const boqItems = await generateBoqItems({
-    projectName: project.project_name,
-    floorName: floor.floor_name,
-    buildingPurpose: project.building_purpose,
-    finalDesignImageUrl: designUrl,
-    requirements: {
-      ...boqContext,
-      final_design_image_url: designUrl
-    }
-  });
+  let boqItems: Design["boq_items"] = [];
+  try {
+    boqItems = await generateBoqItems({
+      projectName: project.project_name,
+      floorName: floor.floor_name,
+      buildingPurpose: project.building_purpose,
+      finalDesignImageUrl: designUrl,
+      requirements: {
+        ...boqContext,
+        final_design_image_url: designUrl
+      }
+    });
+  } catch (boqError) {
+    console.error("BOQ generation failed after design image was created", boqError);
+  }
 
   const designPayload: Record<string, unknown> = {
     floor_id: floorId,

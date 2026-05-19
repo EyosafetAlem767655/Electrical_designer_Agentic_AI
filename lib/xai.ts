@@ -222,12 +222,30 @@ Building purpose: ${context.buildingPurpose ?? "not specified"}
 Design plan: ${limitText(context.designPlan, 1600)}
 Compacted requirements: ${JSON.stringify(requirements)}`;
 
+  let lastValidationError = "Grok BOQ returned no usable counted items from the final design image";
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const attemptPrompt =
+      attempt === 0
+        ? prompt
+        : `${prompt}
+
+Your previous BOQ response was rejected because: ${lastValidationError}.
+Re-inspect the final design image and return a corrected, image-counted BOQ only. Count visible devices/routes from this floor drawing. Do not return placeholders, all-1 quantities, generic templates, samples, fallback estimates, or legend-only quantities.`;
+    const items = await requestBoqItems(context.finalDesignImageUrl, attemptPrompt, attempt === 0 ? 0.2 : 0.1);
+    const validationError = validateCountedBoqItems(items);
+    if (!validationError) return items;
+    lastValidationError = validationError;
+  }
+  throw new Error(lastValidationError);
+}
+
+async function requestBoqItems(finalDesignImageUrl: string, prompt: string, temperature: number) {
   const messages: ChatMessage[] = [
     { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
     {
       role: "user",
       content: [
-        { type: "image_url", image_url: { url: context.finalDesignImageUrl, detail: "high" } },
+        { type: "image_url", image_url: { url: finalDesignImageUrl, detail: "high" } },
         { type: "text", text: prompt }
       ]
     }
@@ -236,7 +254,7 @@ Compacted requirements: ${JSON.stringify(requirements)}`;
   const payload = await xaiFetch<XaiChatResponse>("chat/completions", {
     model: model("XAI_VISION_MODEL", "grok-4"),
     messages,
-    temperature: 0.2
+    temperature
   });
 
   const parsed = extractJson<unknown>(firstText(payload), []);
@@ -246,14 +264,18 @@ Compacted requirements: ${JSON.stringify(requirements)}`;
       ? (parsed as { items: unknown[] }).items
       : [];
   const items = normalizeBoqItems(rawItems, []);
-  if (!items.length) throw new Error("Grok BOQ returned no usable counted items from the final design image");
+  return items;
+}
+
+function validateCountedBoqItems(items: BoqItem[]) {
+  if (!items.length) return "Grok BOQ returned no usable counted items from the final design image";
   if (items.length >= 3 && items.every((item) => item.quantity <= 1)) {
-    throw new Error("Grok BOQ returned placeholder quantities; refusing to store an all-1 BOQ");
+    return "Grok BOQ returned placeholder quantities; refusing to store an all-1 BOQ";
   }
   if (items.some((item) => /fallback|template|generic|sample/i.test(`${item.notes ?? ""} ${item.specification}`))) {
-    throw new Error("Grok BOQ returned generic/template items; refusing to store a non-counted BOQ");
+    return "Grok BOQ returned generic/template items; refusing to store a non-counted BOQ";
   }
-  return items;
+  return null;
 }
 
 async function createDesignPlan(context: {
@@ -273,6 +295,7 @@ async function createDesignPlan(context: {
 - socket outlet coverage for every habitable, working, service, kitchen, office, shop, equipment, or practical-use area, including multiple outlets where real-world use requires them
 - manual wall switch locations near entrances and logical switch control for every lighting group
 - default device assumptions: fluorescent lamp fixtures, manual wall switches, and earthed socket outlets unless the architect explicitly requested LED or another device; do not silently substitute LED
+- basement/parking completeness: fluorescent fixtures across parking bays, drive aisles, ramps, stair/lift lobbies, service rooms, storage, entrances/exits, and dark corners; manual switching/control zones at stair doors, entries, exits, and service rooms; practical earthed socket outlets at maintenance, security/attendant, DB, cleaning, and service/equipment points
 - DB location and circuit grouping
 - clear wiring/cable route plan with separate light, switch/control, and socket outlet circuits
 - emergency lighting, fire alarm, data/CCTV where applicable
@@ -365,11 +388,18 @@ Drawing No: ENT-${context.projectCode}-E-${context.floorNumber}
 Company: Elec Nova Tech
 Revision: ${context.revision}
 
+Prepared engineering drawing plan:
+${limitText(designPlan, 1200)}
+
+Compacted requirements and analysis:
+${limitText(compactedRequirements, 1400)}
+
 ${DESIGN_PROMPT_RULES}
 
 Overlay requirements:
 - Keep the original architectural image as the base layer.
 - Do not modify the base layer. Do not change any architectural geometry, room layout, wall thickness, door swing, stair, column, parking bay, grid, dimension, room label, or title text from the supplied floor plan.
+- Do not fade, white out, clean up, redraw, simplify, crop, or remove original architectural linework, labels, grid bubbles, parking bay markings, ramp/stair graphics, room names, or boundary lines.
 - The source floor plan must still be recognizable pixel-for-pixel as the same drawing after editing. If there is any conflict between improving the overlay and preserving the original plan, preserve the original plan.
 - Only add electrical overlay content: symbols, routes, compact in-drawing circuit labels, DB marks, legends, and electrical notes.
 - Add electrical symbols, circuit routes, distribution board location, lighting points, switches, socket outlets, emergency lighting, fire alarm points, data/CCTV where applicable.
@@ -378,6 +408,7 @@ Overlay requirements:
 - Draw circuit routes with an outlined drafting style: white halo/outline below the colored route, then colored route on top, so circuits remain readable over any background.
 - Put fluorescent lamp lighting points in every room, corridor, stair, lobby, service room, exterior/balcony zone, parking bay zone, and usable section, with manual switch control near entrances.
 - Put socket outlets in every habitable/working room and in practical service/equipment/kitchen/office/shop locations for real use.
+- For basement/parking designs, add enough fluorescent fixtures to cover drive aisles, parking rows, ramps, corners, stair/lift lobbies, service rooms, exits, and fuel/generator/storage areas; add emergency lights on egress paths; add wall/manual switches at access points; add earthed socket outlets at DB/maintenance/security/service/cleaning points rather than leaving large areas without outlets.
 - Draw complete separate circuits for lighting, switch/control runs, and socket outlets. Label each circuit number and show the route back to the DB.
 - No floor type is exempt. Basements, parking, roofs, service floors, corridors, and utility areas still need appropriate lighting, switches, sockets where practical, DB/circuit logic, and visible wiring routes.
 - Make wiring routes and circuit numbers obvious enough for electricians to follow without guessing.
@@ -386,13 +417,7 @@ Overlay requirements:
 - Use short standardized labels instead of paragraphs: DB, FL1/FL2 fluorescent lighting, S1/S2 manual switches, P1/P2 socket outlets, E1 emergency, FA1 fire alarm, D1 data/CCTV, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
 - Do not use leader-arrow callout text, side annotation labels, external label boxes, or large text panels. Put compact labels directly beside the relevant symbol or route inside the drawing area, without covering important architecture.
 - Keep any legend compact and inside available margins of the original plan. The legend must only explain symbols and must not include quantities, specifications, schedules, title-block data, notes, or paragraphs. Do not add a separate side panel, blank right-hand box, decorative sheet border, title block, or large empty annotation boxes.
-- Do not invent a different building layout or redraw the architecture from scratch.
-
-Prepared engineering drawing plan:
-${limitText(designPlan, 1800)}
-
-Compacted requirements and analysis:
-${limitText(compactedRequirements, 2200)}`);
+- Do not invent a different building layout or redraw the architecture from scratch.`);
 
   const modelName = model("XAI_IMAGE_MODEL", "grok-imagine-image-quality");
   const payload = context.sourceImageUrl

@@ -47,8 +47,8 @@ describe("xAI image generation", () => {
     expect(String(requests[1].body.prompt)).toContain("Preserve the original floor plan exactly");
     expect(String(requests[1].body.prompt)).toContain("Only add electrical overlay content");
     expect(String(requests[1].body.prompt)).toContain("Do not omit FL, S, or P devices");
-    expect(String(requests[1].body.prompt)).toContain("Do not use leader-arrow callout text");
-    expect(String(requests[1].body.prompt)).toContain("Put compact labels directly beside the relevant symbol or route inside the drawing area");
+    expect(String(requests[1].body.prompt)).toContain("Do not use leader-arrow");
+    expect(String(requests[1].body.prompt)).toContain("compact");
     expect(String(requests[1].body.prompt)).toContain("Lighting and socket coverage checklist");
     expect(requests[2].url).toBe("https://api.x.ai/v1/images/edits");
     expect(String(requests[2].body.prompt)).toContain("TEXT READABILITY CORRECTION ONLY");

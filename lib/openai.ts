@@ -76,10 +76,11 @@ export async function improveDesignTextWithOpenAI(image: ImageResult, context: {
     `Professional electrical drafting enhancement pass.
 
 Hard constraints:
-- If two input images are provided, the first image is the locked original architectural floor plan and the second image is the draft electrical overlay. Use the first image as the base layer.
+- If two input images are provided, the first image is the locked original architectural floor plan and the second image is the draft electrical overlay. Use the first image as the unchanged base layer and transfer/improve only the electrical overlay from the second image.
 - Preserve the original architectural floor plan exactly. Do not alter, redraw, restyle, crop, stretch, erase, move, or reinterpret any original wall, door, window, stair, column, grid line, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
+- Do not fade, white out, clean up, redraw, simplify, crop, or remove original architectural linework, labels, grid bubbles, parking bay markings, ramp/stair graphics, room names, or boundary lines. If the draft overlay conflicts with the locked original plan, the locked original plan wins.
 - Improve the electrical overlay professionalism only: sharpen line weights, align circuit routes, clean symbol placement, improve contrast, standardize labels, and make the drawing look deployable and electrician-readable.
-- You may complete visibly missing standard electrical overlay items where needed for a deployable design: fluorescent lamp fixtures, manual wall switches, earthed socket outlets, DB labels, route labels, and circuit numbers. Do not change the architectural base plan while doing this.
+- You may complete visibly missing standard electrical overlay items where needed for a deployable design: fluorescent lamp fixtures, manual wall switches, earthed socket outlets, DB labels, route labels, and circuit numbers. For basement/parking plans, cover parking bays, drive aisles, ramps, stair/lift lobbies, service rooms, exits, dark corners, DB/maintenance/security/cleaning/service points, and egress routes. Do not change the architectural base plan while doing this.
 - Do not remove existing valid electrical devices or routes. Do not convert fluorescent fixtures to LED fixtures unless the drawing or project explicitly requests LED.
 - Do not create a new sheet, side panel, blank box, large border, title-block expansion, external annotation area, or decorative layout.
 - Do not add leader-arrow callouts, side callout labels, external annotation boxes, or large text panels. Keep compact labels directly beside their electrical symbols/routes inside the drawing.
