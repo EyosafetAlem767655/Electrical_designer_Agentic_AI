@@ -104,7 +104,7 @@ function compactRequirements(requirements: Record<string, unknown>) {
 
 function clampPrompt(prompt: string) {
   if (prompt.length <= IMAGE_PROMPT_LIMIT) return prompt;
-  return `${prompt.slice(0, IMAGE_PROMPT_TARGET)}\n\n[Context truncated to stay within xAI image prompt limit. Preserve the original architectural floor plan exactly: do not alter walls, doors, windows, stairs, columns, room boundaries, grid lines, dimensions, room labels, parking bays, or architectural symbols. Preserve full engineering intent: practical lighting in every room/section, socket outlets in usable rooms, entrance switches, DB, complete circuit numbers, visible wiring routes, legend, and readable labels. Do not omit complete lighting, switch, and socket outlet circuits because the floor is basement, parking, roof, service, corridor, or any other non-residential area.]`;
+  return `${prompt.slice(0, IMAGE_PROMPT_TARGET)}\n\n[Context truncated to stay within xAI image prompt limit. Preserve the original architectural floor plan exactly: do not alter walls, doors, windows, stairs, columns, room boundaries, grid lines, dimensions, room labels, parking bays, or architectural symbols. Preserve full engineering intent: practical fluorescent lamp fixtures in every room/section, manual switches near entrances, socket outlets in usable rooms, DB, complete circuit numbers, visible wiring routes, compact in-drawing labels, and legend. Do not use leader-arrow callout labels. Do not omit complete lighting, switch, and socket outlet circuits because the floor is basement, parking, roof, service, corridor, or any other non-residential area.]`;
 }
 
 export async function chatCompletion(messages: ChatMessage[], temperature = 0.5) {
@@ -272,14 +272,15 @@ async function createDesignPlan(context: {
       {
         role: "user",
         content: `Prepare the final electrician-facing electrical drawing plan before image generation. Take time to reason through the engineering checklist internally, but do not include hidden chain-of-thought. Return a practical checklist with:
-- room-by-room lighting coverage for every enclosed room, corridor, stair, lobby, service room, and usable section
-- socket outlet coverage for every habitable, working, service, kitchen, office, shop, equipment, or practical-use area
-- switch locations near entrances and logical switch control for every lighting group
-- default device assumptions: fluorescent lamp fixtures, manual wall switches, and earthed socket outlets unless the architect explicitly requested LED or another device
+- room-by-room fluorescent lamp fixture placement for every enclosed room, corridor, stair, lobby, service room, parking bay zone, exterior/balcony zone, and usable section
+- socket outlet coverage for every habitable, working, service, kitchen, office, shop, equipment, or practical-use area, including multiple outlets where real-world use requires them
+- manual wall switch locations near entrances and logical switch control for every lighting group
+- default device assumptions: fluorescent lamp fixtures, manual wall switches, and earthed socket outlets unless the architect explicitly requested LED or another device; do not silently substitute LED
 - DB location and circuit grouping
 - clear wiring/cable route plan with separate light, switch/control, and socket outlet circuits
 - emergency lighting, fire alarm, data/CCTV where applicable
 - any real-world assumptions used
+- final pre-drawing completeness check that every relevant zone has FL lighting, S manual switch control, P socket outlet coverage, DB/circuit numbering, and electrician-readable wiring routes
 - explicit note that no floor type is exempt from lighting, switch, socket, DB, circuit numbering, and electrician-readable wiring routes
 
 Project: ${context.projectName}
@@ -309,11 +310,11 @@ The original architectural floor plan is locked. Do not alter, redraw, restyle, 
 Keep the exact same electrical design: architectural plan, walls, doors, room geometry, electrical symbols, DB location, lighting points, socket outlets, switches, wiring routes, circuit grouping, cable paths, colors, and circuit topology must stay unchanged.
 Only improve blurry, distorted, tiny, or misspelled text labels.
 Rewrite labels as short professional drafting labels with crisp high-contrast CAD-style text.
-Use compact labels such as DB, L1, L2, S1, S2, P1, P2, E1, FA1, D1, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
+Use compact labels such as DB, FL1, FL2, S1, S2, P1, P2, E1, FA1, D1, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
 Preserve the existing title block and legend location if present; only sharpen or correct their text.
 Do not create a new sheet, side panel, blank box, large border, new title block area, or empty annotation rectangles.
 Do not redraw the electrical design. Do not move, remove, simplify, or add circuits while fixing text.
-Keep existing arrow/callout labels outside the architectural floor-plan boundary when they are already outside; never move label boxes over the plan or crop the plan to fit text.
+Do not add leader-arrow callouts, side callout labels, external annotation boxes, or large text panels. Keep compact labels directly beside their electrical symbols/routes inside the drawing.
 If a long label cannot be made readable, replace it with a shorter professional label rather than adding large boxes.
 
 Project: ${context.projectName}
@@ -372,12 +373,12 @@ ${DESIGN_PROMPT_RULES}
 Overlay requirements:
 - Keep the original architectural image as the base layer.
 - Do not modify the base layer. Do not change any architectural geometry, room layout, wall thickness, door swing, stair, column, parking bay, grid, dimension, room label, or title text from the supplied floor plan.
-- Only add electrical overlay content: symbols, routes, circuit labels, DB marks, legends, and electrical notes.
+- Only add electrical overlay content: symbols, routes, compact in-drawing circuit labels, DB marks, legends, and electrical notes.
 - Add electrical symbols, circuit routes, distribution board location, lighting points, switches, socket outlets, emergency lighting, fire alarm points, data/CCTV where applicable.
-- Use fluorescent lamp fixtures as the default lighting points, manual wall switches as the default switching/control points, and earthed socket outlets as the default outlet points. Use LED fixtures only if the architect requested LED.
+- Use fluorescent lamp fixtures as the default lighting points, manual wall switches as the default switching/control points, and earthed socket outlets as the default outlet points. Use LED fixtures only if the architect requested LED. Do not omit FL, S, or P devices from applicable rooms.
 - Use clean drafting-style colored overlays that remain legible against the source plan.
 - Draw circuit routes with an outlined drafting style: white halo/outline below the colored route, then colored route on top, so circuits remain readable over any background.
-- Put lighting points in every room, corridor, stair, lobby, service room, exterior/balcony zone, and usable section, with switch control near entrances.
+- Put fluorescent lamp lighting points in every room, corridor, stair, lobby, service room, exterior/balcony zone, parking bay zone, and usable section, with manual switch control near entrances.
 - Put socket outlets in every habitable/working room and in practical service/equipment/kitchen/office/shop locations for real use.
 - Draw complete separate circuits for lighting, switch/control runs, and socket outlets. Label each circuit number and show the route back to the DB.
 - No floor type is exempt. Basements, parking, roofs, service floors, corridors, and utility areas still need appropriate lighting, switches, sockets where practical, DB/circuit logic, and visible wiring routes.
@@ -385,7 +386,7 @@ Overlay requirements:
 - For revisions, preserve already-correct parts of the existing generated design. Do not restart from the original architectural image. Do not remove existing circuits, outlets, lights, switches, DBs, or labels unless the revision request explicitly says so.
 - Text must be professional and readable in the generated image itself: crisp CAD-style lettering, high contrast, aligned horizontally, no pseudo-text, no random scribbles, no misspelled fake labels.
 - Use short standardized labels instead of paragraphs: DB, FL1/FL2 fluorescent lighting, S1/S2 manual switches, P1/P2 socket outlets, E1 emergency, FA1 fire alarm, D1 data/CCTV, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
-- Keep arrow/callout text outside the architectural floor-plan boundary in clean margin space. The plan must remain fully visible edge to edge; do not crop, trim, cover, shrink, or hide the floor-plan sides to fit labels.
+- Do not use leader-arrow callout text, side annotation labels, external label boxes, or large text panels. Put compact labels directly beside the relevant symbol or route inside the drawing area, without covering important architecture.
 - Keep any title block or legend compact and inside available margins of the original plan. Do not add a separate side panel, blank right-hand box, decorative sheet border, or large empty annotation boxes.
 - Do not invent a different building layout or redraw the architecture from scratch.
 

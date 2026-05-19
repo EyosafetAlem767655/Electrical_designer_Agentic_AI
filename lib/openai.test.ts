@@ -35,6 +35,8 @@ describe("OpenAI design finishing", () => {
     expect(String(form.get("prompt"))).toContain("The original architectural floor plan is locked");
     expect(String(form.get("prompt"))).toContain("Do not alter, redraw, restyle, crop");
     expect(String(form.get("prompt"))).toContain("Do not redesign");
+    expect(String(form.get("prompt"))).toContain("Do not add leader-arrow callouts");
+    expect(String(form.get("prompt"))).toContain("Keep compact labels directly beside their electrical symbols/routes inside the drawing");
     expect(String(form.get("prompt"))).toContain("Do not create a new sheet, side panel, blank box");
   });
 

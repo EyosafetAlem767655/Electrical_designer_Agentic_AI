@@ -35,7 +35,8 @@ describe("xAI image generation", () => {
 
     expect(image.url).toBe("https://example.com/design.png");
     expect(requests[0].url).toBe("https://api.x.ai/v1/chat/completions");
-    expect(JSON.stringify(requests[0].body.messages)).toContain("room-by-room lighting coverage");
+    expect(JSON.stringify(requests[0].body.messages)).toContain("room-by-room fluorescent lamp fixture placement");
+    expect(JSON.stringify(requests[0].body.messages)).toContain("final pre-drawing completeness check");
     expect(requests[1].url).toBe("https://api.x.ai/v1/images/edits");
     expect(requests[1].body).toMatchObject({
       model: "grok-imagine-image-quality",
@@ -45,10 +46,14 @@ describe("xAI image generation", () => {
     expect(String(requests[1].body.prompt)).toContain("Draw the electrical design only as an overlay directly on top of this same plan");
     expect(String(requests[1].body.prompt)).toContain("Preserve the original floor plan exactly");
     expect(String(requests[1].body.prompt)).toContain("Only add electrical overlay content");
+    expect(String(requests[1].body.prompt)).toContain("Do not omit FL, S, or P devices");
+    expect(String(requests[1].body.prompt)).toContain("Do not use leader-arrow callout text");
+    expect(String(requests[1].body.prompt)).toContain("Put compact labels directly beside the relevant symbol or route inside the drawing area");
     expect(String(requests[1].body.prompt)).toContain("Lighting and socket coverage checklist");
     expect(requests[2].url).toBe("https://api.x.ai/v1/images/edits");
     expect(String(requests[2].body.prompt)).toContain("TEXT READABILITY CORRECTION ONLY");
     expect(String(requests[2].body.prompt)).toContain("The original architectural floor plan is locked");
+    expect(String(requests[2].body.prompt)).toContain("Do not add leader-arrow callouts");
     expect(String(requests[2].body.prompt)).toContain("Do not redraw the electrical design");
     expect(String(requests[2].body.prompt)).toContain("Do not create a new sheet, side panel, blank box");
   });

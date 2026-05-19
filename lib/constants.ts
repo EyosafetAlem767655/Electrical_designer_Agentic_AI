@@ -46,6 +46,7 @@ export const DESIGN_PROMPT_RULES = `CRITICAL DRAWING RULES:
 - Use IEC 60617 electrical symbols.
 - Lighting circuits yellow, power blue, emergency red, data/telecom green, fire alarm orange.
 - Use fluorescent lamp fixtures as the default lighting device, manual wall switches as the default control device, and earthed socket outlets as the default power outlet device. Use LED fixtures only if the architect/project requirements explicitly request LED.
+- Before drawing, verify that the overlay includes all three default systems where practical: fluorescent lamp fixtures, manual wall switches, and earthed socket outlets. Do not produce a design that only shows routes or DBs while omitting these devices.
 - Distribution board marked with a bold rectangle and DB label.
 - Every room, corridor, stair, lobby, service room, and section must have appropriate lighting points.
 - Every habitable/working room must have socket outlets placed where electricians would expect them; kitchens, offices, shops, bedrooms, halls, and service rooms need multiple outlets when practical.
@@ -53,9 +54,8 @@ export const DESIGN_PROMPT_RULES = `CRITICAL DRAWING RULES:
 - Circuit numbers must be visible on each run.
 - Cable routes must be thick, clear, dashed where appropriate, and follow walls/ceilings where practical so electricians can understand routing.
 - Use consistent professional drafting text: uppercase where appropriate, straight baseline, crisp black or dark-blue lettering, simple sans-serif/CAD style, no decorative or fake handwritten text.
-- Keep labels close to the relevant symbol or route without covering important architecture; use short leader lines only when needed.
-- If a leader arrow/callout label is needed, place the text outside the floor-plan boundary in clean margin space and point back to the symbol. Do not cover, trim, crop, shrink, or hide the floor plan sides to make room for callouts.
-- Use compact labels only: DB, L1/L2 lighting, S1/S2 switches, P1/P2 socket circuits, E1 emergency, FA1 fire alarm, D1 data/CCTV.
+- Do not use leader-arrow callouts, external annotation boxes, or side callout labels. Put compact drafting labels directly beside the relevant electrical symbol or route inside the drawing area.
+- Use compact labels only: DB, FL1/FL2 fluorescent lighting, S1/S2 manual switches, P1/P2 socket outlets, E1 emergency, FA1 fire alarm, D1 data/CCTV.
 - Include a small readable symbol legend and title block only in existing empty drawing margins or the bottom/right margin of the original plan if space exists.
 - Do not create a new sheet layout, side panel, large blank box, thick decorative border, or empty annotation rectangles.
 - Do not add fake illegible notes. If text cannot be kept readable, use fewer shorter labels instead of blurry long sentences.`;
