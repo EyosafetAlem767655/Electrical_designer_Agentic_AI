@@ -2,9 +2,10 @@ import type { BoqItem, Design } from "@/types";
 
 export function fallbackBoqFromDesign(design?: Pick<Design, "symbol_legend"> | null): BoqItem[] {
   const base: BoqItem[] = [
-    { category: "Lighting", item: "LED luminaire", specification: "230V AC LED fitting, IEC/EU compliant", unit: "pcs", quantity: 1, standard: "EBCS, IEC 60598", notes: "Estimate from drawing; final count by approved layout" },
-    { category: "Power", item: "Earthed socket outlet", specification: "230V, 16A, Type F/Schuko-style outlet with earth", unit: "pcs", quantity: 1, standard: "IEC 60884, EBCS", notes: "Estimate from drawing; final count by approved layout" },
-    { category: "Wiring", item: "Copper conductors in PVC conduit", specification: "IEC copper conductors in PVC conduit/trunking, mm2 sizing by circuit load", unit: "m", quantity: 1, standard: "IEC 60227, IEC 60364", notes: "Route length to be measured on site" },
+    { category: "Lighting", item: "Fluorescent lamp fixture", specification: "230V AC fluorescent fitting, IEC/EU compliant", unit: "pcs", quantity: 8, standard: "EBCS, IEC 60598", notes: "Fallback estimate only; final count by approved layout" },
+    { category: "Switching", item: "Manual wall switch", specification: "230V AC manual lighting switch, one/two-gang as required", unit: "pcs", quantity: 6, standard: "EBCS, IEC 60669", notes: "Fallback estimate only; final count by approved layout" },
+    { category: "Power", item: "Earthed socket outlet", specification: "230V, 16A, Type F/Schuko-style outlet with earth", unit: "pcs", quantity: 10, standard: "IEC 60884, EBCS", notes: "Fallback estimate only; final count by approved layout" },
+    { category: "Wiring", item: "Copper conductors in PVC conduit", specification: "IEC copper conductors in PVC conduit/trunking, mm2 sizing by circuit load", unit: "m", quantity: 120, standard: "IEC 60227, IEC 60364", notes: "Fallback route allowance; route length to be measured on site" },
     { category: "Protection", item: "DIN-rail MCB/RCBO/RCCB protection", specification: "IEC/EU DIN-rail protective devices sized by final circuit load", unit: "set", quantity: 1, standard: "IEC 60898, IEC 61008/61009", notes: "Breaker ratings to be finalized by load schedule" }
   ];
 

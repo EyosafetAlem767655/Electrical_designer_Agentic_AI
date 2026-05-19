@@ -1,16 +1,9 @@
 import { getEnv } from "@/lib/env";
-import { normalizeBoqItems, fallbackBoqItems } from "@/lib/xai";
-import type { BoqItem } from "@/types";
 
 type ImageResult = { url?: string; b64_json?: string };
 
 type OpenAiImageResponse = {
   data?: Array<{ url?: string; b64_json?: string }>;
-  error?: { message?: string };
-};
-
-type OpenAiChatResponse = {
-  choices?: Array<{ message?: { content?: string } }>;
   error?: { message?: string };
 };
 
@@ -63,52 +56,6 @@ async function imageToBlob(image: ImageResult) {
   };
 }
 
-async function openAiJson<T>(path: string, body: Record<string, unknown>) {
-  const response = await fetch(`https://api.openai.com/v1/${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${requireOpenAiKey()}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
-  });
-
-  const text = await response.text();
-  let payload = {} as T & { error?: { message?: string } };
-  if (text) {
-    try {
-      payload = JSON.parse(text) as T & { error?: { message?: string } };
-    } catch {
-      payload = {} as T & { error?: { message?: string } };
-    }
-  }
-  if (!response.ok) {
-    const message = payload.error?.message ?? text;
-    throw new Error(message ? `OpenAI request failed: ${response.status} - ${message}` : `OpenAI request failed: ${response.status}`);
-  }
-  return payload;
-}
-
-function firstText(payload: OpenAiChatResponse) {
-  return payload.choices?.[0]?.message?.content?.trim() ?? "";
-}
-
-function parseJson<T>(text: string, fallback: T): T {
-  const cleaned = text.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-  try {
-    return JSON.parse(cleaned) as T;
-  } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) return fallback;
-    try {
-      return JSON.parse(match[0]) as T;
-    } catch {
-      return fallback;
-    }
-  }
-}
-
 export async function improveDesignTextWithOpenAI(image: ImageResult, context: { projectName: string; floorName: string; revision: number }) {
   const { blob, filename } = await imageToBlob(image);
   const form = new FormData();
@@ -121,10 +68,11 @@ export async function improveDesignTextWithOpenAI(image: ImageResult, context: {
 
 Hard constraints:
 - Preserve the exact drawing composition, floor plan, symbols, cable routes, DB location, lighting points, socket outlets, switch points, circuit colors, and circuit topology.
-- Do not redesign, simplify, move, delete, or add electrical devices or routes.
+- Do not redesign, simplify, move, delete, add, convert, or reinterpret electrical devices or routes.
+- Do not convert fluorescent fixtures to LED fixtures. Preserve the device type shown by the design.
 - Do not create a new sheet, side panel, blank box, large border, title-block expansion, or new annotation area.
 - Only sharpen, correct, and rewrite existing text so it is legible.
-- Use short professional CAD labels: DB, L1, L2, S1, S2, P1, P2, E1, FA1, D1, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
+- Use short professional CAD labels: DB, FL1, FL2, S1, S2, P1, P2, E1, FA1, D1, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
 - If a label is too long, replace it with a shorter professional equivalent without changing the design.
 
 Project: ${context.projectName}
@@ -158,85 +106,4 @@ Revision: ${context.revision}`
   const edited = payload.data?.[0];
   if (!edited?.url && !edited?.b64_json) throw new Error("OpenAI image edit returned no image");
   return edited;
-}
-
-export async function generateBoqItemsWithOpenAI(context: {
-  projectName: string;
-  floorName: string;
-  buildingPurpose?: string | null;
-  finalDesignImageUrl: string;
-  grokBoqItems?: BoqItem[];
-  requirements: Record<string, unknown>;
-}): Promise<BoqItem[]> {
-  const response = await openAiJson<OpenAiChatResponse>("chat/completions", {
-    model: openAiModel("OPENAI_BOQ_MODEL", "gpt-5.5"),
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are an Ethiopian/IEC electrical quantity surveyor. Return only valid JSON matching the requested schema. Use EBCS and IEC/EU terminology, not US/NEC terminology."
-      },
-      {
-        role: "user",
-        content: [
-          { type: "image_url", image_url: { url: context.finalDesignImageUrl, detail: "high" } },
-          {
-            type: "text",
-            text: `${context.grokBoqItems?.length ? "Verify and correct the Grok-counted BOQ against this final cleaned electrical design drawing." : "Create an accurate floor-level Bill of Quantity from this final cleaned electrical design drawing."}
-
-Count visible lighting points, switch points, socket outlets, DB/protection panels, emergency lights, fire alarm devices, data/CCTV points, conduit/trunking route allowances, cable runs, junction boxes, and protection devices.
-
-Rules:
-- Return JSON object only: {"items":[...]}.
-- Every item must have category, item, specification, unit, quantity, standard, and notes.
-- Use Ethiopian/EBCS and IEC/EU assumptions: 220-230V single-phase, 380-400V three-phase, 50Hz, copper conductors in mm2, DIN-rail MCB/RCBO/RCCB, PVC conduit/trunking, Type F/Schuko-style outlets where applicable.
-- Base quantities on visible symbols/routes in the final design image first, then project context.
-- If Grok BOQ items are supplied, treat them as the first-pass count, but correct any missed items, duplicate categories, wrong quantities, wrong units, or weak specifications after inspecting the image yourself.
-- For route lengths, estimate practical quantities and mark notes as site-verified.
-- Avoid AWG, NEMA, 120V, 240V split phase, and NEC.
-
-Project: ${context.projectName}
-Floor: ${context.floorName}
-Building purpose: ${context.buildingPurpose ?? "not specified"}
-Grok first-pass BOQ: ${JSON.stringify(context.grokBoqItems ?? [])}
-Context: ${JSON.stringify(context.requirements)}`
-          }
-        ]
-      }
-    ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "boq_items",
-        strict: true,
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            items: {
-              type: "array",
-              items: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  category: { type: "string" },
-                  item: { type: "string" },
-                  specification: { type: "string" },
-                  unit: { type: "string" },
-                  quantity: { type: "number" },
-                  standard: { type: "string" },
-                  notes: { type: "string" }
-                },
-                required: ["category", "item", "specification", "unit", "quantity", "standard", "notes"]
-              }
-            }
-          },
-          required: ["items"]
-        }
-      }
-    }
-  });
-
-  const parsed = parseJson<{ items?: unknown }>(firstText(response), { items: [] });
-  return normalizeBoqItems(parsed.items, fallbackBoqItems());
 }

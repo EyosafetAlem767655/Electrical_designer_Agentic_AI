@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { generateBoqItemsWithOpenAI, improveDesignTextWithOpenAI } from "@/lib/openai";
+import { improveDesignTextWithOpenAI } from "@/lib/openai";
 
 const originalEnv = { ...process.env };
 
@@ -34,67 +34,6 @@ describe("OpenAI design finishing", () => {
     expect(form.get("model")).toBe("gpt-image-1.5");
     expect(String(form.get("prompt"))).toContain("Do not redesign");
     expect(String(form.get("prompt"))).toContain("Do not create a new sheet, side panel, blank box");
-  });
-
-  it("uses OpenAI vision and structured JSON for BOQ from the final cleaned image", async () => {
-    process.env.OPENAI_API_KEY = "openai-test";
-    const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string, init?: RequestInit) => {
-        requests.push({ url, body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown> });
-        return new Response(
-          JSON.stringify({
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({
-                    items: [
-                      {
-                        category: "Lighting",
-                        item: "LED luminaire",
-                        specification: "230V AC LED fitting, IEC/EU compliant",
-                        unit: "pcs",
-                        quantity: 14,
-                        standard: "EBCS, IEC 60598",
-                        notes: "Counted from final cleaned design image; site verify final quantity"
-                      }
-                    ]
-                  })
-                }
-              }
-            ]
-          }),
-          { status: 200 }
-        );
-      })
-    );
-
-    const items = await generateBoqItemsWithOpenAI({
-      projectName: "Nova Heights",
-      floorName: "Ground Floor",
-      finalDesignImageUrl: "https://example.com/final-cleaned.png",
-      grokBoqItems: [
-        {
-          category: "Lighting",
-          item: "LED luminaire",
-          specification: "230V AC",
-          unit: "pcs",
-          quantity: 12,
-          standard: "EBCS, IEC 60598",
-          notes: "Grok first pass"
-        }
-      ],
-      requirements: { rooms: ["Office"] }
-    });
-
-    expect(requests[0].url).toBe("https://api.openai.com/v1/chat/completions");
-    expect(requests[0].body.model).toBe("gpt-5.5");
-    expect(JSON.stringify(requests[0].body.messages)).toContain("https://example.com/final-cleaned.png");
-    expect(JSON.stringify(requests[0].body.messages)).toContain("Grok first-pass BOQ");
-    expect(JSON.stringify(requests[0].body.messages)).toContain("correct any missed items");
-    expect(requests[0].body.response_format).toMatchObject({ type: "json_schema" });
-    expect(items[0]).toMatchObject({ item: "LED luminaire", quantity: 14 });
   });
 
   it("accepts OPEN_AI_KEY as the Vercel env alias", async () => {

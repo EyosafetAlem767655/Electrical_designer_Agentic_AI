@@ -168,4 +168,38 @@ describe("xAI image generation", () => {
       standard: "EBCS, IEC 60884"
     });
   });
+
+  it("rejects placeholder all-1 BOQ quantities for final design images", async () => {
+    process.env.XAI_API_KEY = "xai-test";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify([
+                    { category: "Lighting", item: "Fluorescent lamp fixture", specification: "230V AC fluorescent fitting", unit: "pcs", quantity: 1, standard: "EBCS, IEC 60598", notes: "placeholder" },
+                    { category: "Switching", item: "Manual wall switch", specification: "230V AC manual switch", unit: "pcs", quantity: 1, standard: "EBCS, IEC 60669", notes: "placeholder" },
+                    { category: "Power", item: "Earthed socket outlet", specification: "230V, 16A outlet", unit: "pcs", quantity: 1, standard: "IEC 60884, EBCS", notes: "placeholder" }
+                  ])
+                }
+              }
+            ]
+          }),
+          { status: 200 }
+        );
+      })
+    );
+
+    await expect(
+      generateBoqItems({
+        projectName: "Nova Heights",
+        floorName: "Basement",
+        finalDesignImageUrl: "https://example.com/final-cleaned-design.png",
+        requirements: { ai_analysis: { rooms: ["Parking"] } }
+      })
+    ).rejects.toThrow(/placeholder quantities/);
+  });
 });

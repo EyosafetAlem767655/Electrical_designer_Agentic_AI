@@ -140,6 +140,7 @@ Requirements:
 - Ensure every habitable or working room receives practical socket outlet coverage.
 - Recommend switch positions near entrances.
 - Recommend cable routes that electricians can understand and install.
+- Unless the architect requested otherwise, assume fluorescent lamp fixtures, manual wall switches, and earthed socket outlets as the default Ethiopian installation devices. Use LED only if requested.
 - List any assumptions where the plan is unclear.
 
 Context: ${JSON.stringify(context)}`
@@ -200,10 +201,13 @@ export async function generateBoqItems(context: {
 Rules:
 - Use Ethiopian/EBCS and IEC/EU standards, not US/NEC standards.
 - Use 220-230V single-phase, 380-400V three-phase, 50Hz assumptions.
-- Use mm2 copper cable sizes, DIN-rail protection devices, PVC conduit/trunking, IP-rated fittings where needed, Type F/Schuko-style earthed socket outlets where appropriate.
-- Include lighting fixtures for every room/section, switches, socket outlets, DB/protection devices, wiring, conduits, junction boxes, emergency lighting, fire alarm, data/CCTV where applicable.
+- Default devices are fluorescent lamp fixtures, manual wall switches, and earthed socket outlets unless the architect explicitly requested LED or another device type.
+- Use LED fixtures only when requested in architect answers, special requirements, or visible design labels.
+- Use mm2 copper cable sizes, DIN-rail protection devices, PVC conduit/trunking, IP-rated fittings where needed, and Type F/Schuko-style earthed socket outlets where appropriate.
+- Include and count fluorescent lamp fixtures, manual switches, socket outlets, DB/protection devices, wiring, conduits, junction boxes, emergency lighting, fire alarm, data/CCTV where applicable.
 - If a final design image is provided, count visible symbols and routes from that final cleaned drawing first. Count lighting points, switch points, socket outlets, DB/protection panels, emergency/fire/data devices, and visible conduit/cable route allowances from the image.
-- Quantities must be defensible estimates from the final drawing. Put "site verify final quantity" in notes where route length or exact device count is uncertain.
+- Quantities and units must be realistic and accurate: pcs for counted devices, m for cable/conduit/trunking route lengths, set only for complete DB assemblies. Do not output placeholder quantity 1 for every row.
+- Quantities must be defensible estimates from the final drawing. Count every visible fluorescent lamp, manual switch, socket outlet, DB, breaker/protection item, and low-current/fire/emergency device. Estimate cable/conduit lengths in meters from visible routes and plan scale where possible. Put "site verify final quantity" in notes where route length or exact device count is uncertain.
 - Avoid US terms like AWG, NEMA, 120V, 240V split phase, or NEC.
 
 Project: ${context.projectName}
@@ -237,7 +241,22 @@ Compacted requirements: ${JSON.stringify(requirements)}`;
     temperature: 0.2
   });
 
-  return normalizeBoqItems(extractJson<unknown>(firstText(payload), []), fallbackBoqItems());
+  const parsed = extractJson<unknown>(firstText(payload), []);
+  const rawItems = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === "object" && Array.isArray((parsed as { items?: unknown }).items)
+      ? (parsed as { items: unknown[] }).items
+      : [];
+  const items = normalizeBoqItems(rawItems, []);
+  if (context.finalDesignImageUrl) {
+    if (!items.length) throw new Error("Grok BOQ returned no usable counted items from the final design image");
+    if (items.length >= 3 && items.every((item) => item.quantity <= 1)) {
+      throw new Error("Grok BOQ returned placeholder quantities; refusing to store an all-1 BOQ");
+    }
+    return items;
+  }
+
+  return items.length ? items : fallbackBoqItems();
 }
 
 async function createDesignPlan(context: {
@@ -256,6 +275,7 @@ async function createDesignPlan(context: {
 - room-by-room lighting coverage for every enclosed room, corridor, stair, lobby, service room, and usable section
 - socket outlet coverage for every habitable, working, service, kitchen, office, shop, equipment, or practical-use area
 - switch locations near entrances and logical switch control for every lighting group
+- default device assumptions: fluorescent lamp fixtures, manual wall switches, and earthed socket outlets unless the architect explicitly requested LED or another device
 - DB location and circuit grouping
 - clear wiring/cable route plan with separate light, switch/control, and socket outlet circuits
 - emergency lighting, fire alarm, data/CCTV where applicable
@@ -350,6 +370,7 @@ ${DESIGN_PROMPT_RULES}
 Overlay requirements:
 - Keep the original architectural image as the base layer.
 - Add electrical symbols, circuit routes, distribution board location, lighting points, switches, socket outlets, emergency lighting, fire alarm points, data/CCTV where applicable.
+- Use fluorescent lamp fixtures as the default lighting points, manual wall switches as the default switching/control points, and earthed socket outlets as the default outlet points. Use LED fixtures only if the architect requested LED.
 - Use clean drafting-style colored overlays that remain legible against the source plan.
 - Draw circuit routes with an outlined drafting style: white halo/outline below the colored route, then colored route on top, so circuits remain readable over any background.
 - Put lighting points in every room, corridor, stair, lobby, service room, exterior/balcony zone, and usable section, with switch control near entrances.
@@ -359,7 +380,7 @@ Overlay requirements:
 - Make wiring routes and circuit numbers obvious enough for electricians to follow without guessing.
 - For revisions, preserve already-correct parts of the existing generated design. Do not restart from the original architectural image. Do not remove existing circuits, outlets, lights, switches, DBs, or labels unless the revision request explicitly says so.
 - Text must be professional and readable in the generated image itself: crisp CAD-style lettering, high contrast, aligned horizontally, no pseudo-text, no random scribbles, no misspelled fake labels.
-- Use short standardized labels instead of paragraphs: DB, L1/L2 lighting, S1/S2 switches, P1/P2 socket outlets, E1 emergency, FA1 fire alarm, D1 data/CCTV, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
+- Use short standardized labels instead of paragraphs: DB, FL1/FL2 fluorescent lighting, S1/S2 manual switches, P1/P2 socket outlets, E1 emergency, FA1 fire alarm, D1 data/CCTV, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
 - Keep any title block or legend compact and inside available margins of the original plan. Do not add a separate side panel, blank right-hand box, decorative sheet border, or large empty annotation boxes.
 - Do not invent a different building layout or redraw the architecture from scratch.
 
@@ -470,9 +491,10 @@ export function normalizeLegend(value: unknown, fallback: SymbolLegendItem[]) {
 
 export function fallbackBoqItems(): BoqItem[] {
   return [
-    { category: "Lighting", item: "LED luminaire", specification: "230V AC LED fitting, IEC/EU compliant", unit: "pcs", quantity: 1, standard: "EBCS, IEC 60598", notes: "Quantity to be expanded per room lighting layout and verified on site" },
-    { category: "Power", item: "Earthed socket outlet", specification: "230V, 16A, Type F/Schuko-style outlet with earth", unit: "pcs", quantity: 1, standard: "IEC 60884, EBCS", notes: "Final location and count by approved layout" },
-    { category: "Wiring", item: "Copper conductors in PVC conduit", specification: "IEC copper conductors in PVC conduit/trunking, mm2 sizing by circuit load", unit: "m", quantity: 1, standard: "IEC 60227, IEC 60364", notes: "Route length to be verified on site" }
+    { category: "Lighting", item: "Fluorescent lamp fixture", specification: "230V AC fluorescent fitting, IEC/EU compliant", unit: "pcs", quantity: 8, standard: "EBCS, IEC 60598", notes: "Fallback estimate only; final quantity must be counted from approved drawing" },
+    { category: "Switching", item: "Manual wall switch", specification: "230V AC manual lighting switch, one/two-gang as required", unit: "pcs", quantity: 6, standard: "EBCS, IEC 60669", notes: "Fallback estimate only; final quantity must be counted from approved drawing" },
+    { category: "Power", item: "Earthed socket outlet", specification: "230V, 16A, Type F/Schuko-style outlet with earth", unit: "pcs", quantity: 10, standard: "IEC 60884, EBCS", notes: "Fallback estimate only; final location and count by approved layout" },
+    { category: "Wiring", item: "Copper conductors in PVC conduit", specification: "IEC copper conductors in PVC conduit/trunking, mm2 sizing by circuit load", unit: "m", quantity: 120, standard: "IEC 60227, IEC 60364", notes: "Fallback route allowance; verify length on site" }
   ];
 }
 
