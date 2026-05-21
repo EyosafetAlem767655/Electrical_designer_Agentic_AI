@@ -36,6 +36,11 @@ function jobErrorMessage(error: unknown) {
   return String(error);
 }
 
+function qaIssueSummary(qa?: { missing_defaults?: string[]; coverage_issues?: string[]; drawing_issues?: string[] } | null) {
+  const issues = [...(qa?.missing_defaults ?? []), ...(qa?.coverage_issues ?? []), ...(qa?.drawing_issues ?? [])].filter(Boolean);
+  return issues.join("; ");
+}
+
 export async function createTelegramImageJob(payload: Record<string, unknown>) {
   try {
     return await createJob("telegram_image", payload);
@@ -467,8 +472,20 @@ async function processDesignQaStage(job: Job) {
   console.log("[jobs:generate_design] visual QA stage completed", { jobId: job.id, projectId, floorId, version, attempt: designAttempt, approved: qa.approved, score: qa.score });
   if (!qa.approved) {
     if (designAttempt >= 2) {
-      const reasons = [...qa.missing_defaults, ...qa.coverage_issues, ...qa.drawing_issues].join("; ") || "Grok visual QA rejected the final design";
-      throw new Error(`Final design visual QA failed after automatic correction: ${reasons}`);
+      const reasons = qaIssueSummary(qa) || "Grok visual QA found unresolved design issues after automatic correction";
+      console.warn("[jobs:generate_design] visual QA still has issues after correction; saving for engineering review", { jobId: job.id, projectId, floorId, version, reasons });
+      await createDelayedJob(job.type, {
+        projectId,
+        floorId,
+        improvementRequest,
+        phase: "finalize_design",
+        version,
+        designUrl,
+        imagePath,
+        finalQaSummary: qa,
+        qaWarning: reasons
+      });
+      return;
     }
     await createDelayedJob(job.type, {
       projectId,
@@ -496,7 +513,7 @@ async function processDesignQaStage(job: Job) {
 }
 
 async function processDesignFinalizeStage(job: Job) {
-  const { projectId, floorId, improvementRequest, version, designUrl, imagePath, finalQaSummary } = job.payload as {
+  const { projectId, floorId, improvementRequest, version, designUrl, imagePath, finalQaSummary, qaWarning } = job.payload as {
     projectId: string;
     floorId: string;
     improvementRequest?: string;
@@ -504,6 +521,7 @@ async function processDesignFinalizeStage(job: Job) {
     designUrl: string;
     imagePath: string;
     finalQaSummary?: Record<string, unknown>;
+    qaWarning?: string;
   };
   const supabase = getSupabaseAdmin();
   const { project, floor } = await getProjectFloor(projectId, floorId);
@@ -546,6 +564,7 @@ async function processDesignFinalizeStage(job: Job) {
     annotations,
     symbol_legend: legend,
     boq_items: boqItems,
+    revision_notes: qaWarning ? `Grok QA warning: ${qaWarning}` : null,
     improvement_request: improvementRequest ?? null
   };
   let { data: design, error } = await supabase.from("designs").insert(designPayload).select("*").single();
@@ -565,7 +584,9 @@ async function processDesignFinalizeStage(job: Job) {
   await supabase.from("bot_sessions").update({ state: "AWAITING_APPROVAL" }).eq("project_id", projectId);
 
   if (project.telegram_chat_id) {
-    const message = `The electrical design for ${floor.floor_name} has been generated and sent to the engineering team for review. I'll notify you once it's approved.`;
+    const message = qaWarning
+      ? `The electrical design for ${floor.floor_name} has been generated with Grok QA warnings and sent to the engineering team for review. Issues: ${qaWarning}`
+      : `The electrical design for ${floor.floor_name} has been generated and sent to the engineering team for review. I'll notify you once it's approved.`;
     await sendTelegramMessage(project.telegram_chat_id, message);
     await supabase.from("conversations").insert({ project_id: projectId, floor_id: floorId, sender: "bot", message });
   }

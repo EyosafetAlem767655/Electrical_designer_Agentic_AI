@@ -53,6 +53,12 @@ export function DesignViewer({ design }: { design?: Design | null }) {
       <aside className="glass-panel rounded p-4">
         <p className="text-sm font-semibold text-[#fffaf0]">Symbol Legend</p>
         <p className="mt-1 text-xs text-[#c9b9a6]/56">Electrical systems used in the current design.</p>
+        {design?.revision_notes ? (
+          <div className="mt-4 rounded border border-[#d6b17d]/24 bg-[#d6b17d]/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#f5e1bd]/72">Grok QA Warning</p>
+            <p className="mt-2 text-sm leading-5 text-[#fffaf0]/78">{design.revision_notes}</p>
+          </div>
+        ) : null}
         <div className="mt-4 space-y-2">
           {legend.map((item) => (
             <div key={`${item.symbol}-${item.label}`} className="rounded border border-[#c6a171]/14 bg-white/[0.025] p-3">
