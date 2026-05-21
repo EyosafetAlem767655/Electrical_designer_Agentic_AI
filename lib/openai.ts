@@ -235,15 +235,21 @@ export async function createElectricalDesignWithOpenAI(context: {
 
 ${action}
 
+Input image rules:
+- If one image is provided, it is the locked architectural floor plan or the existing design to edit.
+- If two images are provided, the first image is the locked original architectural floor plan and the second image is the current generated electrical design. Use the first image as the unchanged base reference and transfer/correct only the electrical overlay from the second image.
+
 Hard requirements:
 - Preserve the architectural floor plan exactly. Do not alter, redraw, crop, stretch, erase, simplify, move, or reinterpret any wall, door, window, stair, column, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
-- Add only electrical overlay content: fluorescent lamp fixtures, manual wall switches, 220-230V earthed socket outlets, DB/protection labels, circuit numbers, wiring routes, emergency/fire/data devices where applicable, and a compact symbol legend if space exists.
+- Add only electrical overlay content: fluorescent lamp fixtures, manual wall switches, 220-230V earthed socket outlets, DB/protection mark, circuit numbers, wiring routes, emergency/fire/data devices where applicable.
 - Unless explicitly requested otherwise, every room and practical usable zone must have fluorescent lamp coverage, manual switch control near entrances/control points, and 220-230V earthed socket outlet coverage.
 - Use LED only if the architect/project requirements explicitly request LED.
 - Use Ethiopian/EBCS and IEC/EU language: 220-230V single-phase, 380-400V three-phase where needed, 50Hz, copper conductors in mm2, DIN-rail MCB/RCBO/RCCB, PVC conduit/trunking, IP-rated fittings for wet/outdoor zones.
 - Avoid US/NEC terms such as AWG, NEMA, 120V, split-phase, or receptacle.
-- Make the drawing electrician-readable and BOQ-countable. Use compact labels beside symbols/routes: DB, FL1/FL2, S1/S2, P1/P2, E1, FA1, D1, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
-- Do not add side panels, large note boxes, leader-arrow callouts, title-block expansions, decorative borders, or fake illegible text.
+- Make the drawing electrician-readable and BOQ-countable through clear symbols, consistent colors, visible routes, and simple circuit IDs.
+- Text discipline is critical: do not draw a legend, title block, bill of quantity table, schedule, notes panel, side panel, large note box, leader-arrow callout, title-block expansion, decorative border, or paragraph text inside the image. The dashboard renders a clean legend separately.
+- Avoid long words and specifications inside the drawing. Use only short readable tags where unavoidable: DB, FL, S, P, E, FA, D, EV1-EV5, L1-L6, P1-P6. Do not write labels like "fluorescent batten", "socket outlet", "generator 80kVA", cable sizes, lux values, or standards in the image.
+- If an existing generated image contains a messy AI-drawn legend/title block, remove or ignore that generated legend content and keep the electrical overlay on the original plan clean.
 
 Project: ${context.projectName}
 Floor: ${context.floorName}

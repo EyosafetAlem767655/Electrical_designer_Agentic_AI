@@ -124,7 +124,7 @@ function normalizeQaResult(value: unknown): DesignVisualQaResult {
       missing_defaults: ["Visual QA did not return valid JSON"],
       coverage_issues: [],
       drawing_issues: ["Malformed visual QA response"],
-      correction_prompt: "Rebuild the electrical overlay with complete fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/circuit labels, and readable routes in every applicable room and usable zone."
+      correction_prompt: "Rebuild the electrical overlay with complete fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/circuit identifiers, and readable routes in every applicable room and usable zone. Do not add an in-image legend or long text."
     };
   }
   const record = value as Record<string, unknown>;
@@ -135,7 +135,7 @@ function normalizeQaResult(value: unknown): DesignVisualQaResult {
   const correctionPrompt =
     typeof record.correction_prompt === "string" && record.correction_prompt.trim()
       ? record.correction_prompt.trim()
-      : "Correct the electrical overlay so every applicable room and usable zone has fluorescent lamp fixtures, manual switch control, 220-230V earthed socket outlets, DB/circuit labels, and electrician-readable wiring routes.";
+      : "Correct the electrical overlay so every applicable room and usable zone has fluorescent lamp fixtures, manual switch control, 220-230V earthed socket outlets, DB/circuit identifiers, and electrician-readable wiring routes. Do not add an in-image legend or long text.";
   return {
     approved: record.approved === true && missingDefaults.length === 0 && coverageIssues.length === 0 && drawingIssues.length === 0,
     score: Number.isFinite(score) ? Math.min(100, Math.max(0, score)) : 0,
@@ -633,9 +633,14 @@ Default requirements unless explicitly overridden:
 - fluorescent lamp fixtures, not LED
 - manual wall switches near entrances/control points
 - 220-230V earthed socket outlets in every practical room/usable area
-- DB/protection labels and clear circuit numbers
+- DB/protection mark and clear circuit identifiers
 - electrician-readable wiring routes back to DB
-- compact labels suitable for BOQ counting: FL, S, P, DB, E, FA, D
+- symbols/routes must be countable for BOQ from visible placement, color, and simple IDs
+
+Important text-quality rule:
+- Do not reject a design merely because it lacks a drawn legend, title block, long equipment names, cable sizes, lux text, or dense FL/S/P/DB/E/FA/D labels. The dashboard renders a clean legend outside the image.
+- Prefer clean symbols and routes over AI-generated text. Penalize messy fake text, large legends, note panels, or unreadable text blocks as drawing issues.
+- If correction is needed, the correction_prompt must ask for symbols/routes/device placement first and must explicitly say not to add an in-image legend or long text.
 
 Approve only when the drawing is professional, usable, and countable for BOQ. The correction_prompt must be short and directly usable as an image edit instruction if rejected.
 
