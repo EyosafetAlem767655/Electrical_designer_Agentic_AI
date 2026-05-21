@@ -10,6 +10,7 @@ import { analyzeFloorPlan, evaluateFinalDesignImageWithGrok, fallbackAnnotations
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
 const MAX_JOB_ATTEMPTS = 3;
+const MAX_DESIGN_ATTEMPTS = 3;
 const STALE_PROCESSING_MINUTES = 6;
 
 export async function createJob(type: JobType, payload: Record<string, unknown>) {
@@ -488,7 +489,7 @@ async function processDesignQaStage(job: Job) {
   });
   console.log("[jobs:generate_design] visual QA stage completed", { jobId: job.id, projectId, floorId, version, attempt: designAttempt, approved: qa.approved, score: qa.score });
   if (!qa.approved) {
-    if (designAttempt >= 2) {
+    if (designAttempt >= MAX_DESIGN_ATTEMPTS) {
       const reasons = qaIssueSummary(qa) || "Grok visual QA found unresolved design issues after automatic correction";
       console.warn("[jobs:generate_design] visual QA still has issues after correction; saving for engineering review", { jobId: job.id, projectId, floorId, version, reasons });
       await createDelayedJob(job.type, {

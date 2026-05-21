@@ -148,7 +148,7 @@ describe("OpenAI design finishing", () => {
     expect(String(form.get("prompt"))).toContain("Grok is the designer");
     expect(String(form.get("prompt"))).toContain("Do not create or keep an AI-drawn legend");
     expect(String(form.get("prompt"))).toContain("Ensure symbols remain standard and explainable by the dashboard legend");
-    expect(String(form.get("prompt"))).toContain("Grok generates the BOQ");
+    expect(String(form.get("prompt"))).toContain("verify readability and symbol clarity only");
     expect(String(form.get("prompt"))).toContain("side panel, large note box");
   });
 

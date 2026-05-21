@@ -449,7 +449,7 @@ Hard constraints:
 - Do not create or keep an AI-drawn legend, title block, BOQ table, schedule, side panel, large note box, leader-arrow callout, title-block expansion, external annotation area, decorative layout, or paragraph text. If the draft contains messy generated legend/title text, remove that generated text while preserving the plan and electrical overlay.
 - Use only short readable CAD IDs where unavoidable: MSU, DB, FL, S, P, E, FA, D, EV1-EV5, L1-L6, P1-P6. Do not write long equipment names, cable specifications, standards, lux values, or BOQ quantities inside the image.
 - Do not convert fluorescent fixtures to LED unless the drawing or project explicitly requests LED.
-- This pass should make OpenAI verify readability and symbol clarity only; Grok generates the design and Grok generates the BOQ after this image is saved.
+- This pass should make OpenAI verify readability and symbol clarity only.
 
 Project: ${context.projectName}
 Floor: ${context.floorName}
