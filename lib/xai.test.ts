@@ -17,9 +17,6 @@ describe("xAI image generation", () => {
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         requests.push({ url, body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown> });
-        if (String(url).endsWith("/responses")) {
-          return new Response(JSON.stringify({ output_text: JSON.stringify({ approved: true, required_changes: [], risk_flags: [], prompt_additions: [] }) }), { status: 200 });
-        }
         if (String(url).endsWith("/chat/completions")) {
           return new Response(JSON.stringify({ choices: [{ message: { content: "Lighting and socket coverage checklist" } }] }), { status: 200 });
         }
@@ -41,30 +38,25 @@ describe("xAI image generation", () => {
     expect(requests[0].url).toBe("https://api.x.ai/v1/chat/completions");
     expect(JSON.stringify(requests[0].body.messages)).toContain("room-by-room fluorescent lamp fixture placement");
     expect(JSON.stringify(requests[0].body.messages)).toContain("final pre-drawing completeness check");
-    expect(requests[1].url).toBe("https://api.openai.com/v1/responses");
-    expect(requests[1].body).toMatchObject({ model: "gpt-5.5", reasoning: { effort: "medium" } });
-    expect(JSON.stringify(requests[1].body)).toContain("220-230V earthed socket outlets");
-    expect(requests[2].url).toBe("https://api.x.ai/v1/chat/completions");
-    expect(JSON.stringify(requests[2].body.messages)).toContain("reconciling Grok's draft with OpenAI's critique");
-    expect(requests[3].url).toBe("https://api.x.ai/v1/images/edits");
-    expect(requests[3].body).toMatchObject({
+    expect(requests[1].url).toBe("https://api.x.ai/v1/images/edits");
+    expect(requests[1].body).toMatchObject({
       model: "grok-imagine-image-quality",
       image: { url: "https://example.com/source-plan.png", type: "image_url" }
     });
-    expect(requests[3].body).not.toHaveProperty("size");
-    expect(String(requests[3].body.prompt)).toContain("Draw the electrical design only as an overlay directly on top of this same plan");
-    expect(String(requests[3].body.prompt)).toContain("Preserve the original floor plan exactly");
-    expect(String(requests[3].body.prompt)).toContain("Only add electrical overlay content");
-    expect(String(requests[3].body.prompt)).toContain("Do not omit FL, S, or P devices");
-    expect(String(requests[3].body.prompt)).toContain("Do not use leader-arrow");
-    expect(String(requests[3].body.prompt)).toContain("compact");
-    expect(String(requests[3].body.prompt)).toContain("Lighting and socket coverage checklist");
-    expect(requests[4].url).toBe("https://api.x.ai/v1/images/edits");
-    expect(String(requests[4].body.prompt)).toContain("TEXT READABILITY CORRECTION ONLY");
-    expect(String(requests[4].body.prompt)).toContain("The original architectural floor plan is locked");
-    expect(String(requests[4].body.prompt)).toContain("Do not add leader-arrow callouts");
-    expect(String(requests[4].body.prompt)).toContain("Do not redraw the electrical design");
-    expect(String(requests[4].body.prompt)).toContain("Do not create a new sheet, side panel, blank box");
+    expect(requests[1].body).not.toHaveProperty("size");
+    expect(String(requests[1].body.prompt)).toContain("Draw the electrical design only as an overlay directly on top of this same plan");
+    expect(String(requests[1].body.prompt)).toContain("Preserve the original floor plan exactly");
+    expect(String(requests[1].body.prompt)).toContain("Only add electrical overlay content");
+    expect(String(requests[1].body.prompt)).toContain("Do not omit FL, S, or P systems");
+    expect(String(requests[1].body.prompt)).toContain("Do not use leader-arrow");
+    expect(String(requests[1].body.prompt)).toContain("MSU");
+    expect(String(requests[1].body.prompt)).toContain("Lighting and socket coverage checklist");
+    expect(requests[2].url).toBe("https://api.x.ai/v1/images/edits");
+    expect(String(requests[2].body.prompt)).toContain("TEXT READABILITY CORRECTION ONLY");
+    expect(String(requests[2].body.prompt)).toContain("The original architectural floor plan is locked");
+    expect(String(requests[2].body.prompt)).toContain("Do not add leader-arrow callouts");
+    expect(String(requests[2].body.prompt)).toContain("Do not redraw the electrical design");
+    expect(String(requests[2].body.prompt)).toContain("Do not create a new sheet, side panel, blank box");
   });
 
   it("keeps image edit prompts under xAI's 8000 character limit", async () => {
@@ -75,9 +67,6 @@ describe("xAI image generation", () => {
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         requests.push({ url, body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown> });
-        if (String(url).endsWith("/responses")) {
-          return new Response(JSON.stringify({ output_text: JSON.stringify({ approved: true, required_changes: [], risk_flags: [], prompt_additions: [] }) }), { status: 200 });
-        }
         if (String(url).endsWith("/chat/completions")) {
           return new Response(JSON.stringify({ choices: [{ message: { content: "A concise design plan ".repeat(300) } }] }), { status: 200 });
         }
@@ -118,9 +107,6 @@ describe("xAI image generation", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
-        if (String(url).endsWith("/responses")) {
-          return new Response(JSON.stringify({ output_text: JSON.stringify({ approved: true, required_changes: [], risk_flags: [], prompt_additions: [] }) }), { status: 200 });
-        }
         if (String(url).endsWith("/chat/completions")) {
           return new Response(JSON.stringify({ choices: [{ message: { content: "Design plan" } }] }), { status: 200 });
         }

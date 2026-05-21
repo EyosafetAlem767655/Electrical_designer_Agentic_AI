@@ -140,16 +140,16 @@ describe("OpenAI design finishing", () => {
     expect(form.get("model")).toBe("gpt-image-1.5");
     expect(form.get("input_fidelity")).toBe("high");
     expect(form.getAll("image[]")).toHaveLength(2);
-    expect(String(form.get("prompt"))).toContain("Professional electrical drafting enhancement pass");
+    expect(String(form.get("prompt"))).toContain("Professional electrical drafting readability and symbol check pass");
     expect(String(form.get("prompt"))).toContain("the first image is the locked original architectural floor plan");
     expect(String(form.get("prompt"))).toContain("Preserve the original architectural floor plan exactly");
     expect(String(form.get("prompt"))).toContain("Do not alter, redraw, restyle, crop");
-    expect(String(form.get("prompt"))).toContain("Improve the electrical overlay professionalism only");
-    expect(String(form.get("prompt"))).toContain("complete visibly missing standard electrical overlay items");
-    expect(String(form.get("prompt"))).toContain("Do not add leader-arrow callouts");
-    expect(String(form.get("prompt"))).toContain("Keep compact labels directly beside their electrical symbols/routes inside the drawing");
-    expect(String(form.get("prompt"))).toContain("The legend, if present, must be only symbol-to-meaning entries");
-    expect(String(form.get("prompt"))).toContain("Do not create a new sheet, side panel, blank box");
+    expect(String(form.get("prompt"))).toContain("Improve readability only");
+    expect(String(form.get("prompt"))).toContain("Grok is the designer");
+    expect(String(form.get("prompt"))).toContain("Do not create or keep an AI-drawn legend");
+    expect(String(form.get("prompt"))).toContain("Ensure symbols remain standard and explainable by the dashboard legend");
+    expect(String(form.get("prompt"))).toContain("Grok generates the BOQ");
+    expect(String(form.get("prompt"))).toContain("side panel, large note box");
   });
 
   it("accepts OPEN_AI_KEY as the Vercel env alias", async () => {

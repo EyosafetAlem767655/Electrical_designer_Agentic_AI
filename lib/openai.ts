@@ -304,20 +304,19 @@ export async function improveDesignTextWithOpenAI(image: ImageResult, context: {
   form.append("output_format", "png");
   form.append(
     "prompt",
-    `Professional electrical drafting enhancement pass.
+    `Professional electrical drafting readability and symbol check pass.
 
 Hard constraints:
 - If two input images are provided, the first image is the locked original architectural floor plan and the second image is the draft electrical overlay. Use the first image as the unchanged base layer and transfer/improve only the electrical overlay from the second image.
 - Preserve the original architectural floor plan exactly. Do not alter, redraw, restyle, crop, stretch, erase, move, or reinterpret any original wall, door, window, stair, column, grid line, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
 - Do not fade, white out, clean up, redraw, simplify, crop, or remove original architectural linework, labels, grid bubbles, parking bay markings, ramp/stair graphics, room names, or boundary lines. If the draft overlay conflicts with the locked original plan, the locked original plan wins.
-- Improve the electrical overlay professionalism only: sharpen line weights, align circuit routes, clean symbol placement, improve contrast, standardize labels, and make the drawing look deployable and electrician-readable.
-- You may complete visibly missing standard electrical overlay items where needed for a deployable design: fluorescent lamp fixtures, manual wall switches, earthed socket outlets, DB labels, route labels, and circuit numbers. For basement/parking plans, cover parking bays, drive aisles, ramps, stair/lift lobbies, service rooms, exits, dark corners, DB/maintenance/security/cleaning/service points, and egress routes. Do not change the architectural base plan while doing this.
-- Do not remove existing valid electrical devices or routes. Do not convert fluorescent fixtures to LED fixtures unless the drawing or project explicitly requests LED.
-- Do not create a new sheet, side panel, blank box, large border, title-block expansion, external annotation area, or decorative layout.
-- Do not add leader-arrow callouts, side callout labels, external annotation boxes, or large text panels. Keep compact labels directly beside their electrical symbols/routes inside the drawing.
-- Use short professional CAD labels: DB, FL1, FL2, S1, S2, P1, P2, E1, FA1, D1, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
-- If a label is too long, replace it with a shorter professional equivalent without changing the design.
-- The legend, if present, must be only symbol-to-meaning entries. No notes, quantities, specifications, schedules, or explanatory paragraphs inside the legend.
+- Improve readability only: sharpen overlay line weights, align routes if already present, clean symbol placement, improve contrast, and standardize short IDs.
+- Do not redesign the electrical system. Grok is the designer. Do not add new devices/routes except to restore a clearly corrupted or unreadable symbol from the Grok draft.
+- Ensure symbols remain standard and explainable by the dashboard legend: MSU, DB, FL, S, P, E, FA, D, EV, G.
+- Do not create or keep an AI-drawn legend, title block, BOQ table, schedule, side panel, large note box, leader-arrow callout, title-block expansion, external annotation area, decorative layout, or paragraph text. If the draft contains messy generated legend/title text, remove that generated text while preserving the plan and electrical overlay.
+- Use only short readable CAD IDs where unavoidable: MSU, DB, FL, S, P, E, FA, D, EV1-EV5, L1-L6, P1-P6. Do not write long equipment names, cable specifications, standards, lux values, or BOQ quantities inside the image.
+- Do not convert fluorescent fixtures to LED unless the drawing or project explicitly requests LED.
+- This pass should make OpenAI verify readability and symbol clarity only; Grok generates the design and Grok generates the BOQ after this image is saved.
 
 Project: ${context.projectName}
 Floor: ${context.floorName}

@@ -1,6 +1,5 @@
 import { DESIGN_PROMPT_RULES, ELECTRICAL_SYSTEM_PROMPT } from "@/lib/constants";
 import { getEnv, requireEnv } from "@/lib/env";
-import { reviewDesignPlanWithOpenAI } from "@/lib/openai";
 import type { BoqItem, DesignAnnotation, SymbolLegendItem } from "@/types";
 
 type ChatMessage =
@@ -96,6 +95,7 @@ function compactRequirements(requirements: Record<string, unknown>) {
     special_requirements: limitText(requirements.special_requirements, 700),
     architect_answers: limitText(requirements.architect_answers, 900),
     improvement_request: limitText(requirements.improvement_request, 700),
+    main_supply_source: limitText(requirements.main_supply_source, 700),
     rooms: compactList(analysis.rooms, 20),
     load_assumptions: compactList(analysis.load_assumptions),
     lighting_plan: compactList(analysis.lighting_plan, 20),
@@ -176,13 +176,14 @@ export async function analyzeFloorPlan(imageBase64: string, context: Record<stri
           { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
           {
             type: "text",
-            text: `Analyze this architectural floor plan for a real-world electrical installation design. Do a careful engineering checklist before answering, then return strict JSON only. The JSON must include keys rooms, load_assumptions, lighting_plan, socket_outlet_plan, switch_plan, db_recommendation, circuit_strategy, cable_route_strategy, emergency_systems, fire_alarm_plan, data_cctv_plan, unclear_items, questions, annotations, symbol_legend, electrician_notes.
+            text: `Analyze this architectural floor plan for a real-world electrical installation design. Do a careful engineering checklist before answering, then return strict JSON only. The JSON must include keys rooms, load_assumptions, main_supply_source, lighting_plan, socket_outlet_plan, switch_plan, db_recommendation, circuit_strategy, cable_route_strategy, emergency_systems, fire_alarm_plan, data_cctv_plan, unclear_items, questions, annotations, symbol_legend, electrician_notes.
 
 Requirements:
 - Identify every room, corridor, stair, lobby, service room, wet area, and usable section.
+- Identify the main supply unit/source from transformer or utility incomer. If it is not visible or not specified, add a clarification question asking exactly where the incoming main supply/source is located.
 - Ensure every room and section receives appropriate lighting coverage.
-- Ensure every habitable or working room receives practical socket outlet coverage.
-- Recommend switch positions near entrances.
+- Lamps, socket outlets, and manual switches are mandatory design systems for every floor. Ensure every practical room/usable zone receives fluorescent lamp coverage, earthed socket outlet coverage, and manual switch control unless physically unsuitable.
+- Recommend switch positions near entrances/control points.
 - Recommend cable routes that electricians can understand and install.
 - Unless the architect requested otherwise, assume fluorescent lamp fixtures, manual wall switches, and earthed socket outlets as the default Ethiopian installation devices. Use LED only if requested.
 - List any assumptions where the plan is unclear.
@@ -197,6 +198,7 @@ Context: ${JSON.stringify(context)}`
   return extractJson(firstText(response), {
     rooms: [],
     load_assumptions: [],
+    main_supply_source: "",
     lighting_plan: [],
     socket_outlet_plan: [],
     switch_plan: [],
@@ -220,7 +222,7 @@ export async function generateQuestions(analysis: Record<string, unknown>, conte
       { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Create concise numbered clarification questions for the architect. Ask only what affects electrical design. Return JSON array of strings. Analysis: ${JSON.stringify(
+        content: `Create concise numbered clarification questions for the architect. Ask only what affects electrical design. The first required question must ask where the incoming main supply unit/source from the transformer or utility incomer is located unless the analysis or context already clearly gives that location. Return JSON array of strings. Analysis: ${JSON.stringify(
           analysis
         )}. Context: ${JSON.stringify(context)}`
       }
@@ -228,7 +230,18 @@ export async function generateQuestions(analysis: Record<string, unknown>, conte
     0.4
   );
 
-  return extractJson<string[]>(text, ["Please confirm room purposes, special equipment, and preferred outlet/lighting requirements."]);
+  const questions = extractJson<string[]>(text, ["Please confirm room purposes, special equipment, and preferred outlet/lighting requirements."]);
+  const sourceText = [
+    typeof analysis.main_supply_source === "string" ? analysis.main_supply_source : "",
+    typeof (context as { main_supply_source?: unknown }).main_supply_source === "string" ? String((context as { main_supply_source?: unknown }).main_supply_source) : "",
+    typeof (context as { project?: { special_requirements?: unknown } }).project?.special_requirements === "string" ? String((context as { project?: { special_requirements?: unknown } }).project?.special_requirements) : ""
+  ].join(" ");
+  const sourceKnown = /transformer|utility incomer|incoming main|main supply.+(?:room|yard|gate|basement|ground|north|south|east|west|near|at)/i.test(sourceText);
+  const asksSource = questions.some((question) => /main supply|transformer|utility incomer|incoming/i.test(question));
+  if (!sourceKnown && !asksSource) {
+    return ["Where is the incoming main supply unit/source from the transformer or utility incomer located for this project/floor?", ...questions];
+  }
+  return questions;
 }
 
 export async function generateBoqItems(context: {
@@ -257,7 +270,7 @@ Rules:
 - Do not count from the legend alone. The legend only explains symbols; quantities must come from visible placements and routes in the floor drawing.
 - Quantities and units must be realistic and accurate: pcs for counted devices, m for cable/conduit/trunking route lengths, set only for complete DB assemblies. Do not output placeholder quantity 1 for every row.
 - Quantities must be defensible estimates from the final drawing. Count every visible fluorescent lamp, manual switch, socket outlet, DB, breaker/protection item, and low-current/fire/emergency device. Estimate cable/conduit lengths in meters from visible routes and plan scale where possible. Put "site verify final quantity" in notes where route length or exact device count is uncertain.
-- If the image is not clear enough to count an item, omit that item or return an empty array rather than inventing generic quantities.
+- If the image is not clear enough to count an item exactly, make a conservative engineering estimate from visible rooms/zones and the Grok design intent, then put "site verify final quantity" in notes. Do not return an empty BOQ for a generated design.
 - Avoid US terms like AWG, NEMA, 120V, 240V split phase, or NEC.
 
 Project: ${context.projectName}
@@ -335,10 +348,11 @@ async function createGrokDesignPlan(context: {
       {
         role: "user",
         content: `Prepare the final electrician-facing electrical drawing plan before image generation. Take time to reason through the engineering checklist internally, but do not include hidden chain-of-thought. Return a practical checklist with:
+- main supply unit/source from transformer or utility incomer, with route logic from source to DB; if the source is unknown, mark it as "MSU/source to be confirmed" and keep it as an engineering assumption
 - room-by-room fluorescent lamp fixture placement for every enclosed room, corridor, stair, lobby, service room, parking bay zone, exterior/balcony zone, and usable section
-- socket outlet coverage for every habitable, working, service, kitchen, office, shop, equipment, or practical-use area, including multiple outlets where real-world use requires them
-- manual wall switch locations near entrances and logical switch control for every lighting group
-- default device assumptions: fluorescent lamp fixtures, manual wall switches, and earthed socket outlets unless the architect explicitly requested LED or another device; do not silently substitute LED
+- socket outlet coverage for every floor and every habitable, working, service, kitchen, office, shop, equipment, or practical-use area, including multiple outlets where real-world use requires them
+- manual wall switch locations near entrances/control points and logical switch control for every lighting group
+- default device assumptions: fluorescent lamp fixtures, manual wall switches, and 220-230V earthed socket outlets on every floor unless the architect explicitly requested otherwise; do not silently substitute LED
 - basement/parking completeness: fluorescent fixtures across parking bays, drive aisles, ramps, stair/lift lobbies, service rooms, storage, entrances/exits, and dark corners; manual switching/control zones at stair doors, entries, exits, and service rooms; practical earthed socket outlets at maintenance, security/attendant, DB, cleaning, and service/equipment points
 - DB location and circuit grouping
 - clear wiring/cable route plan with separate light, switch/control, and socket outlet circuits
@@ -355,73 +369,6 @@ Requirements and analysis: ${JSON.stringify(requirements)}`
     ],
     0.2
   );
-}
-
-async function reconcileDesignPlanWithGrok(context: {
-  projectName: string;
-  floorName: string;
-  buildingPurpose?: string | null;
-  requirements: Record<string, unknown>;
-  grokPlan: string;
-  openAiReview: Awaited<ReturnType<typeof reviewDesignPlanWithOpenAI>>;
-}) {
-  const requirements = compactRequirements(context.requirements);
-  return chatCompletion(
-    [
-      { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `Create the final image-generation electrical design plan by reconciling Grok's draft with OpenAI's critique. Return a compact electrician-facing plan only; do not include hidden reasoning.
-
-The final plan must preserve Ethiopian/EBCS and IEC/EU practice, fluorescent lamp fixtures by default, manual wall switches by default, and 220-230V earthed socket outlets by default unless the architect explicitly requested otherwise. LED must not be used unless requested.
-
-The final plan must be countable from the generated drawing for BOQ: every visible FL, S, P, DB/protection, emergency, fire, data/CCTV device and route family must have clear compact labels.
-
-Project: ${context.projectName}
-Floor: ${context.floorName}
-Building purpose: ${context.buildingPurpose ?? "not specified"}
-Requirements and analysis: ${JSON.stringify(requirements)}
-
-Grok draft plan:
-${limitText(context.grokPlan, 2200)}
-
-OpenAI review JSON:
-${JSON.stringify(context.openAiReview)}
-
-Final plan requirements:
-- Include all required changes and prompt additions from OpenAI.
-- Keep room-by-room or zone-by-zone coverage specific enough for drawing.
-- Explicitly mention FL fluorescent lamps, S manual switches, P 220-230V earthed socket outlets, DB/circuit labels, route labels, and BOQ-countable symbols.
-- Keep labels compact and drawable.`
-      }
-    ],
-    0.15
-  );
-}
-
-async function createCollaborativeDesignPlan(context: {
-  projectName: string;
-  floorName: string;
-  buildingPurpose?: string | null;
-  requirements: Record<string, unknown>;
-}) {
-  const requirements = compactRequirements(context.requirements);
-  const grokPlan = await createGrokDesignPlan({ ...context, requirements });
-  const openAiReview = await reviewDesignPlanWithOpenAI({
-    projectName: context.projectName,
-    floorName: context.floorName,
-    buildingPurpose: context.buildingPurpose,
-    requirements,
-    grokPlan
-  });
-  return reconcileDesignPlanWithGrok({
-    projectName: context.projectName,
-    floorName: context.floorName,
-    buildingPurpose: context.buildingPurpose,
-    requirements,
-    grokPlan,
-    openAiReview
-  });
 }
 
 function imageInputFromResult(image: { url?: string; b64_json?: string }) {
@@ -479,7 +426,7 @@ export async function generateDesignDraftImage(context: {
   requirements: Record<string, unknown>;
 }) {
   const compactedRequirements = compactRequirements(context.requirements);
-  const designPlan = await createCollaborativeDesignPlan({
+  const designPlan = await createGrokDesignPlan({
     projectName: context.projectName,
     floorName: context.floorName,
     buildingPurpose: context.buildingPurpose,
@@ -512,9 +459,10 @@ Overlay requirements:
 - Do not modify the base layer. Do not change any architectural geometry, room layout, wall thickness, door swing, stair, column, parking bay, grid, dimension, room label, or title text from the supplied floor plan.
 - Do not fade, white out, clean up, redraw, simplify, crop, or remove original architectural linework, labels, grid bubbles, parking bay markings, ramp/stair graphics, room names, or boundary lines.
 - The source floor plan must still be recognizable pixel-for-pixel as the same drawing after editing. If there is any conflict between improving the overlay and preserving the original plan, preserve the original plan.
-- Only add electrical overlay content: symbols, routes, compact in-drawing circuit labels, DB marks, legends, and electrical notes.
+- Only add electrical overlay content: symbols, routes, compact circuit IDs, DB/MSU marks, and minimal electrical notes where unavoidable.
 - Add electrical symbols, circuit routes, distribution board location, lighting points, switches, socket outlets, emergency lighting, fire alarm points, data/CCTV where applicable.
-- Use fluorescent lamp fixtures as the default lighting points, manual wall switches as the default switching/control points, and earthed socket outlets as the default outlet points. Use LED fixtures only if the architect requested LED. Do not omit FL, S, or P devices from applicable rooms.
+- Use fluorescent lamp fixtures as the default lighting points, manual wall switches as the default switching/control points, and 220-230V earthed socket outlets as the default outlet points on every floor. Use LED fixtures only if the architect requested LED. Do not omit FL, S, or P systems from applicable rooms/zones.
+- Show the main supply unit/source from transformer or utility incomer as MSU if known. If unknown, show a small "MSU?" marker at the most plausible incoming/DB area and keep the route assumption clear.
 - Use clean drafting-style colored overlays that remain legible against the source plan.
 - Draw circuit routes with an outlined drafting style: white halo/outline below the colored route, then colored route on top, so circuits remain readable over any background.
 - Put fluorescent lamp lighting points in every room, corridor, stair, lobby, service room, exterior/balcony zone, parking bay zone, and usable section, with manual switch control near entrances.
@@ -524,10 +472,10 @@ Overlay requirements:
 - No floor type is exempt. Basements, parking, roofs, service floors, corridors, and utility areas still need appropriate lighting, switches, sockets where practical, DB/circuit logic, and visible wiring routes.
 - Make wiring routes and circuit numbers obvious enough for electricians to follow without guessing.
 - For revisions, preserve already-correct parts of the existing generated design. Do not restart from the original architectural image. Do not remove existing circuits, outlets, lights, switches, DBs, or labels unless the revision request explicitly says so.
-- Text must be professional and readable in the generated image itself: crisp CAD-style lettering, high contrast, aligned horizontally, no pseudo-text, no random scribbles, no misspelled fake labels.
-- Use short standardized labels instead of paragraphs: DB, FL1/FL2 fluorescent lighting, S1/S2 manual switches, P1/P2 socket outlets, E1 emergency, FA1 fire alarm, D1 data/CCTV, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
+- Text must be minimal and readable: crisp CAD-style short IDs only, high contrast, aligned horizontally, no pseudo-text, no random scribbles, no misspelled fake labels.
+- Use short standardized IDs instead of paragraphs: MSU, DB, FL, S, P, E, FA, D, EV1-EV5, L1-L6, P1-P6.
 - Do not use leader-arrow callout text, side annotation labels, external label boxes, or large text panels. Put compact labels directly beside the relevant symbol or route inside the drawing area, without covering important architecture.
-- Keep any legend compact and inside available margins of the original plan. The legend must only explain symbols and must not include quantities, specifications, schedules, title-block data, notes, or paragraphs. Do not add a separate side panel, blank right-hand box, decorative sheet border, title block, or large empty annotation boxes.
+- Do not draw an in-image legend, title block, BOQ table, schedule, large note panel, side panel, blank right-hand box, decorative sheet border, or large empty annotation boxes. The dashboard explains symbols separately.
 - Do not invent a different building layout or redraw the architecture from scratch.`);
 
   const modelName = model("XAI_IMAGE_MODEL", "grok-imagine-image-quality");

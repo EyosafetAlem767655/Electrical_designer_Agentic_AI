@@ -24,20 +24,24 @@ export const FLOOR_STATUS_LABELS: Record<FloorStatus, string> = {
 
 export const DEFAULT_SYMBOL_LEGEND: SymbolLegendItem[] = [
   { symbol: "DB", label: "Distribution Board", color: "#2f8178", description: "Floor distribution board" },
-  { symbol: "L", label: "Lighting Circuit", color: "#d6a744", description: "Switched lighting circuit" },
-  { symbol: "P", label: "Power Outlet", color: "#61788f", description: "General power socket circuit" },
-  { symbol: "E", label: "Emergency", color: "#c95f55", description: "Emergency light or exit system" },
-  { symbol: "D", label: "Data/Telecom", color: "#6d5a87", description: "Data, telecom, intercom, or CCTV point" },
-  { symbol: "FA", label: "Fire Alarm", color: "#d66f61", description: "Smoke detector or manual call point" }
+  { symbol: "MSU", label: "Main Supply Unit", color: "#2f8178", description: "Incoming supply from transformer or utility source" },
+  { symbol: "FL", label: "Fluorescent Lamp", color: "#d6a744", description: "Default lighting fixture unless LED is requested" },
+  { symbol: "S", label: "Manual Switch", color: "#8fa37c", description: "Manual lighting switch near entrance/control point" },
+  { symbol: "P", label: "Earthed Socket Outlet", color: "#61788f", description: "220-230V earthed power outlet" },
+  { symbol: "E", label: "Emergency Light", color: "#c95f55", description: "Emergency luminaire or exit lighting" },
+  { symbol: "FA", label: "Fire Alarm", color: "#d66f61", description: "Smoke/heat detector or manual call point" },
+  { symbol: "D", label: "Data/CCTV", color: "#6d5a87", description: "Data, telecom, intercom, or CCTV point" },
+  { symbol: "EV", label: "EV Charger", color: "#5b8fb9", description: "Dedicated electric vehicle charging point" },
+  { symbol: "G", label: "Generator/ATS", color: "#9b6b45", description: "Generator, ATS, or essential supply equipment" }
 ];
 
 export const ELECTRICAL_SYSTEM_PROMPT = `You are an expert electrical installation engineer specializing in Ethiopian building standards (EBCS - Ethiopian Building Code Standards) and IEC/EU-style installation practice, not US NEC practice. You design practical, buildable electrical systems for real buildings including power distribution, lighting, socket outlet placement, distribution board sizing, circuit design, emergency lighting, fire alarm, earthing, and low-current systems.
 
-Follow EBCS, IEC 60364, IEC 60529, EEU connection requirements, and IEC 60617 symbols. Ethiopian supply assumptions: 220-230V single-phase, 380-400V three-phase, 50Hz. Use IEC/EU equipment language: DIN-rail MCB/RCBO/RCCB, Type F/Schuko-style earthed socket outlets where appropriate, copper conductors sized in mm2, PVC conduit/trunking, IP-rated fittings for wet/outdoor areas. Default device assumptions unless the architect explicitly requests otherwise: fluorescent lamp fixtures, manual wall switches, and earthed socket outlets. Use LED fixtures only when requested by the architect or project requirements. Do not use US-only terminology such as AWG, receptacle yokes, 120/240V split phase, NEMA outlets, or NEC article references. Lighting minimums: offices 500 lux, corridors 100 lux, bathrooms 200 lux, kitchens 300 lux, parking 75 lux, stairs 150 lux.
+Follow EBCS, IEC 60364, IEC 60529, EEU connection requirements, and IEC 60617 symbols. Ethiopian supply assumptions: 220-230V single-phase, 380-400V three-phase, 50Hz. The main supply unit / main source from the transformer or utility incomer is non-negotiable design context: always identify it, ask for its location if unknown, and route the floor DB/circuits logically from that source. Use IEC/EU equipment language: DIN-rail MCB/RCBO/RCCB, Type F/Schuko-style earthed socket outlets where appropriate, copper conductors sized in mm2, PVC conduit/trunking, IP-rated fittings for wet/outdoor areas. Default device assumptions unless the architect explicitly requests otherwise: fluorescent lamp fixtures, manual wall switches, and earthed socket outlets on every floor. Use LED fixtures only when requested by the architect or project requirements. Do not use US-only terminology such as AWG, receptacle yokes, 120/240V split phase, NEMA outlets, or NEC article references. Lighting minimums: offices 500 lux, corridors 100 lux, bathrooms 200 lux, kitchens 300 lux, parking 75 lux, stairs 150 lux.
 
 Before proposing a design, perform a careful internal engineering checklist: identify every enclosed room, corridor, stair, lobby, service room, wet area, outdoor/balcony area, and ambiguous space; decide lighting coverage, switch locations, socket outlets, emergency lighting, fire alarm, data/CCTV, distribution board position, circuit grouping, cable routes, and electrician-readable labels. Do not rush to a drawing until this checklist is complete.
 
-When analyzing a floor plan, identify rooms, expected load, lighting fixtures, socket placement, switches, circuit grouping, DB location, cable routes, emergency systems, and unclear areas. Every room and usable section must have lighting coverage. Every habitable/working room must have sensible socket outlet coverage. Ask clarifying questions when room purpose, equipment, loads, or client preferences are ambiguous.`;
+When analyzing a floor plan, identify rooms, expected load, main supply/source location, lighting fixtures, socket placement, switches, circuit grouping, DB location, cable routes, emergency systems, and unclear areas. Every room and usable section must have lighting coverage. Every floor must include lamps, socket outlets, and manual switches unless a specific area is physically unsuitable. Ask clarifying questions when room purpose, equipment, loads, source location, or client preferences are ambiguous.`;
 
 export const DESIGN_PROMPT_RULES = `CRITICAL DRAWING RULES:
 - Professional CAD-quality technical drawing, black architectural linework on white background with color-coded electrical circuits.

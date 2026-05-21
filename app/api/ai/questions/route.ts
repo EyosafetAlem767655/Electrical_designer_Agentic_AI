@@ -15,7 +15,13 @@ export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
     if (!getEnv("XAI_API_KEY")) {
-      return NextResponse.json({ ok: true, questions: ["Please confirm room purposes, special equipment, lighting preferences, and outlet requirements."] });
+      return NextResponse.json({
+        ok: true,
+        questions: [
+          "Where is the incoming main supply unit/source from the transformer or utility incomer located for this project/floor?",
+          "Please confirm room purposes, special equipment, lighting preferences, and outlet requirements."
+        ]
+      });
     }
     const questions = await generateQuestions(input.analysis, input.context);
     return NextResponse.json({ ok: true, questions });
