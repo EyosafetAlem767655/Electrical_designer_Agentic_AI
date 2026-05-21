@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const supabaseMock = vi.hoisted(() => ({
   inserts: [] as Array<{ table: string; row: Record<string, unknown> }>,
@@ -55,6 +57,7 @@ vi.mock("@/lib/xai", () => ({
 
 vi.mock("@/lib/openai", () => ({
   createElectricalDesignWithOpenAI: vi.fn(),
+  evaluateDesignImageWithOpenAI: vi.fn(),
   improveDesignTextWithOpenAI: vi.fn()
 }));
 
@@ -62,6 +65,7 @@ vi.mock("@/lib/boq", () => ({
   fallbackBoqFromDesign: vi.fn()
 }));
 
+import { describeJobStage } from "@/lib/job-stage";
 import { chooseDesignEditSource, createTelegramImageJob } from "@/lib/jobs";
 
 describe("job enqueue helpers", () => {
@@ -111,5 +115,50 @@ describe("job enqueue helpers", () => {
         previousDesignImageUrl: "https://example.com/design-v1.png"
       })
     ).toBe("https://example.com/design-v1.png");
+  });
+
+  it("keeps the active generate_design pipeline owned by Grok, with OpenAI only checking", () => {
+    const source = readFileSync(join(process.cwd(), "lib", "jobs.ts"), "utf8");
+    const pipeline = source.slice(source.indexOf("async function processGenerateDesign"));
+
+    expect(source).toContain('const phase = typeof job.payload.phase === "string" ? job.payload.phase : "grok_design"');
+    expect(pipeline.indexOf("generateDesignDraftImage")).toBeGreaterThan(-1);
+    expect(pipeline.indexOf("improveDesignTextWithOpenAI")).toBeGreaterThan(pipeline.indexOf("generateDesignDraftImage"));
+    expect(pipeline.indexOf("generateBoqItems")).toBeGreaterThan(pipeline.indexOf("improveDesignTextWithOpenAI"));
+    expect(pipeline.indexOf('phase: "openai_qa"')).toBeGreaterThan(pipeline.indexOf("generateBoqItems"));
+    expect(source).not.toContain("createElectricalDesignWithOpenAI");
+    expect(source).not.toContain("generateDesignPackageWithOpenAI");
+  });
+
+  it("labels design stages by actual Grok/OpenAI responsibility", () => {
+    expect(
+      describeJobStage({
+        type: "generate_design",
+        status: "processing",
+        attempts: 1,
+        error: null,
+        payload: { phase: "grok_design", version: 1 }
+      })?.label
+    ).toBe("Grok design + BOQ");
+
+    expect(
+      describeJobStage({
+        type: "generate_design",
+        status: "processing",
+        attempts: 1,
+        error: null,
+        payload: { phase: "openai_qa", version: 1, designAttempt: 1 }
+      })?.label
+    ).toBe("OpenAI QA review");
+
+    expect(
+      describeJobStage({
+        type: "generate_design",
+        status: "processing",
+        attempts: 1,
+        error: null,
+        payload: { phase: "grok_fix", designAttempt: 2 }
+      })?.label
+    ).toBe("Grok correction from OpenAI feedback");
   });
 });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createElectricalDesignWithOpenAI, improveDesignTextWithOpenAI, reviewDesignPlanWithOpenAI } from "@/lib/openai";
+import { createElectricalDesignWithOpenAI, evaluateDesignImageWithOpenAI, improveDesignTextWithOpenAI, reviewDesignPlanWithOpenAI } from "@/lib/openai";
 
 const originalEnv = { ...process.env };
 
@@ -113,6 +113,84 @@ describe("OpenAI design finishing", () => {
     expect(review.approved).toBe(false);
     expect(review.required_changes[0]).toMatch(/valid JSON/i);
     expect(review.prompt_additions.join(" ")).toContain("fluorescent lamp fixtures");
+  });
+
+  it("QA-checks Grok designs through the Responses API with structured JSON", async () => {
+    process.env.OPENAI_API_KEY = "openai-test";
+    process.env.OPENAI_REVIEW_MODEL = "gpt-5.5-qa";
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        return new Response(
+          JSON.stringify({
+            output_text: JSON.stringify({
+              approved: false,
+              score: 72,
+              readability_issues: ["Legend text is blurry"],
+              symbol_issues: ["Cut P symbol in lobby"],
+              requirement_issues: ["Missing manual switch at stair door"],
+              boq_issues: ["BOQ does not count fluorescent lamps"],
+              correction_prompt: "Grok: repair blurry legend, restore P symbol, add stair switch, and regenerate counted BOQ."
+            })
+          }),
+          { status: 200 }
+        );
+      })
+    );
+
+    const qa = await evaluateDesignImageWithOpenAI({
+      projectName: "Nova Heights",
+      floorName: "Basement",
+      buildingPurpose: "Parking",
+      finalDesignImageUrl: "https://example.com/design.png",
+      requirements: {
+        symbol_legend: [{ symbol: "FL", label: "Fluorescent Lamp" }],
+        boq_items: [{ item: "Fluorescent lamp fixture", quantity: 12 }]
+      }
+    });
+
+    expect(qa.approved).toBe(false);
+    expect(qa.readability_issues).toEqual(["Legend text is blurry"]);
+    expect(qa.symbol_issues).toEqual(["Cut P symbol in lobby"]);
+    expect(qa.requirement_issues.join(" ")).toContain("manual switch");
+    expect(qa.boq_issues.join(" ")).toContain("fluorescent lamps");
+    expect(requests[0].url).toBe("https://api.openai.com/v1/responses");
+    const body = JSON.parse(String(requests[0].init?.body ?? "{}")) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      model: "gpt-5.5-qa",
+      reasoning: { effort: "medium" }
+    });
+    expect(JSON.stringify(body)).toContain("Readability: no blurry text");
+    expect(JSON.stringify(body)).toContain("cut symbols");
+    expect(JSON.stringify(body)).toContain("every visible symbol family");
+    expect(JSON.stringify(body)).toContain("fluorescent lamps");
+    expect(JSON.stringify(body)).toContain("manual switches");
+    expect(JSON.stringify(body)).toContain("220-230V earthed socket outlets");
+    expect(JSON.stringify(body)).toContain("MSU");
+    expect(JSON.stringify(body)).toContain("BOQ must exist");
+  });
+
+  it("returns conservative failed QA when OpenAI QA JSON is malformed", async () => {
+    process.env.OPEN_AI_KEY = "openai-alias-test";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(JSON.stringify({ output_text: "not json" }), { status: 200 });
+      })
+    );
+
+    const qa = await evaluateDesignImageWithOpenAI({
+      projectName: "Nova Heights",
+      floorName: "Basement",
+      finalDesignImageUrl: "https://example.com/design.png",
+      requirements: {}
+    });
+
+    expect(qa.approved).toBe(false);
+    expect(qa.readability_issues[0]).toMatch(/valid JSON/i);
+    expect(qa.correction_prompt).toContain("Grok must correct");
   });
 
   it("uses OpenAI image edits to professionalize the overlay while preserving the original plan", async () => {

@@ -16,27 +16,39 @@ export function describeJobStage(job?: Pick<Job, "type" | "status" | "payload" |
   const revision = version ? `v${version}` : null;
 
   if (job.type === "generate_design" || job.type === "revision_design") {
-    if (phase === "qa_design") {
+    if (phase === "openai_qa") {
       return {
-        label: "Grok requirement check",
-        detail: [revision, designAttempt ? `attempt ${designAttempt}` : null, "checking lamps, switches, sockets, DB, routes"].filter(Boolean).join(" - ")
+        label: "OpenAI QA review",
+        detail: [revision, designAttempt ? `attempt ${designAttempt}` : null, "checking readability, symbols, legend, BOQ, and defaults"].filter(Boolean).join(" - ")
       };
     }
-    if (phase === "finalize_design") {
+    if (phase === "openai_readability") {
       return {
-        label: "BOQ and final save",
-        detail: [revision, "counting final approved drawing and saving design"].filter(Boolean).join(" - ")
+        label: "OpenAI text/symbol cleanup",
+        detail: [revision, "cleaning blurry labels and cut symbols"].filter(Boolean).join(" - ")
       };
     }
-    if (designAttempt && designAttempt > 1) {
+    if (phase === "grok_fix" || (designAttempt && designAttempt > 1)) {
       return {
-        label: "OpenAI correction generation",
-        detail: [revision, `attempt ${designAttempt}`, "OpenAI applies Grok corrections, Grok edits text"].filter(Boolean).join(" - ")
+        label: "Grok correction from OpenAI feedback",
+        detail: [revision, designAttempt ? `attempt ${designAttempt}` : null, "fixing design and regenerating BOQ"].filter(Boolean).join(" - ")
+      };
+    }
+    if (phase === "final_save") {
+      return {
+        label: "Saving reviewed design",
+        detail: [revision, "storing drawing, legend, and Grok BOQ"].filter(Boolean).join(" - ")
+      };
+    }
+    if (phase === "grok_design" || !phase) {
+      return {
+        label: "Grok design + BOQ",
+        detail: [revision, job.type === "revision_design" ? "Grok revision overlay, OpenAI readability check, Grok BOQ" : "Grok electrical overlay, OpenAI readability check, Grok BOQ"].filter(Boolean).join(" - ")
       };
     }
     return {
-      label: "OpenAI design generation",
-      detail: [revision, job.type === "revision_design" ? "OpenAI revision overlay, Grok edits text and checks requirements" : "OpenAI electrical overlay, Grok edits text and checks requirements"].filter(Boolean).join(" - ")
+      label: "Grok design + BOQ",
+      detail: [revision, "Grok electrical design pipeline"].filter(Boolean).join(" - ")
     };
   }
 

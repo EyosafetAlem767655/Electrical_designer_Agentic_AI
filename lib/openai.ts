@@ -10,6 +10,16 @@ export type OpenAiDesignReview = {
   prompt_additions: string[];
 };
 
+export type OpenAiDesignQaResult = {
+  approved: boolean;
+  score: number;
+  readability_issues: string[];
+  symbol_issues: string[];
+  requirement_issues: string[];
+  boq_issues: string[];
+  correction_prompt: string;
+};
+
 type OpenAiImageResponse = {
   data?: Array<{ url?: string; b64_json?: string }>;
   error?: { message?: string };
@@ -182,6 +192,131 @@ function normalizeOpenAiDesignPackage(value: unknown): OpenAiDesignPackage {
     boq_items: normalizeOpenAiBoqItems(record.boq_items),
     symbol_legend: normalizeOpenAiLegend(record.symbol_legend)
   };
+}
+
+function normalizeDesignQa(value: unknown): OpenAiDesignQaResult {
+  if (!value || typeof value !== "object") {
+    return {
+      approved: false,
+      score: 0,
+      readability_issues: ["OpenAI QA did not return valid JSON"],
+      symbol_issues: [],
+      requirement_issues: [],
+      boq_issues: ["Malformed OpenAI QA response"],
+      correction_prompt:
+        "Grok must correct the electrical design and BOQ: make all text crisp, restore any cut symbols, ensure every symbol is explained by the structured legend, include fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/MSU labels, clear routes, and regenerate a counted BOQ."
+    };
+  }
+  const record = value as Record<string, unknown>;
+  const score = typeof record.score === "number" ? record.score : typeof record.score === "string" ? Number(record.score) : 0;
+  const readabilityIssues = stringArray(record.readability_issues);
+  const symbolIssues = stringArray(record.symbol_issues);
+  const requirementIssues = stringArray(record.requirement_issues);
+  const boqIssues = stringArray(record.boq_issues);
+  const correctionPrompt =
+    typeof record.correction_prompt === "string" && record.correction_prompt.trim()
+      ? record.correction_prompt.trim()
+      : "Grok must correct the electrical design and BOQ: repair unreadable text/symbols, explain every visible symbol in the structured legend, include all mandatory FL/S/P defaults, DB/MSU, readable routes, and regenerate counted BOQ.";
+  return {
+    approved: record.approved === true && readabilityIssues.length === 0 && symbolIssues.length === 0 && requirementIssues.length === 0 && boqIssues.length === 0,
+    score: Number.isFinite(score) ? Math.min(100, Math.max(0, score)) : 0,
+    readability_issues: readabilityIssues,
+    symbol_issues: symbolIssues,
+    requirement_issues: requirementIssues,
+    boq_issues: boqIssues,
+    correction_prompt: correctionPrompt
+  };
+}
+
+export async function evaluateDesignImageWithOpenAI(context: {
+  projectName: string;
+  floorName: string;
+  buildingPurpose?: string | null;
+  finalDesignImageUrl: string;
+  requirements: Record<string, unknown>;
+}) {
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${requireOpenAiKey()}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: openAiModel("OPENAI_REVIEW_MODEL", "gpt-5.5"),
+      reasoning: { effort: "medium" },
+      text: {
+        verbosity: "low",
+        format: {
+          type: "json_schema",
+          name: "electrical_design_qa",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["approved", "score", "readability_issues", "symbol_issues", "requirement_issues", "boq_issues", "correction_prompt"],
+            properties: {
+              approved: { type: "boolean" },
+              score: { type: "number", minimum: 0, maximum: 100 },
+              readability_issues: { type: "array", items: { type: "string" } },
+              symbol_issues: { type: "array", items: { type: "string" } },
+              requirement_issues: { type: "array", items: { type: "string" } },
+              boq_issues: { type: "array", items: { type: "string" } },
+              correction_prompt: { type: "string" }
+            }
+          }
+        }
+      },
+      input: [
+        {
+          role: "system",
+          content:
+            "You are OpenAI acting only as an electrical drawing QA checker and text editor. Grok is the designer and BOQ generator. Return strict JSON that matches the schema."
+        },
+        {
+          role: "user",
+          content: [
+            { type: "input_image", image_url: context.finalDesignImageUrl, detail: "high" },
+            {
+              type: "input_text",
+              text: `QA-check this Grok-generated Ethiopian/EBCS + IEC electrical design image and the stored legend/BOQ. Do not redesign it yourself. Return JSON only.
+
+Project: ${context.projectName}
+Floor: ${context.floorName}
+Building purpose: ${context.buildingPurpose ?? "not specified"}
+Requirements/context: ${JSON.stringify(context.requirements)}
+
+Check these non-negotiable items:
+- Readability: no blurry text, pseudo-text, misspelled labels, cut symbols, orphan tags, or unreadable key explanations.
+- Symbol explanation: every visible symbol family in the drawing must be explained by the structured symbol legend; reject unexplained or cut-off symbols.
+- Defaults: fluorescent lamps, manual switches, and 220-230V earthed socket outlets must be present where practical on every floor and usable room/zone unless explicitly overridden.
+- Source/distribution: main supply unit/source from transformer or utility incomer must be marked as MSU/MSU? and DB/circuit routes must be understandable.
+- BOQ: BOQ must exist, must be generated from the visible Grok design, must include counted lamps, switches, sockets, DB/protection, routes/conduit/cable allowances, and applicable emergency/fire/data/EV/generator devices.
+- Legend/symbol sheet should be the structured dashboard/PDF legend, not blurry AI text inside the image.
+
+If rejected, correction_prompt must be a concise instruction addressed to Grok, including both drawing fixes and BOQ regeneration.`
+            }
+          ]
+        }
+      ]
+    }),
+    signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
+  });
+
+  const text = await response.text();
+  let payload = {} as OpenAiResponsesPayload;
+  if (text) {
+    try {
+      payload = JSON.parse(text) as OpenAiResponsesPayload;
+    } catch {
+      payload = {};
+    }
+  }
+  if (!response.ok) {
+    const message = payload.error?.message ?? text;
+    throw new Error(message ? `OpenAI design QA failed: ${response.status} - ${message}` : `OpenAI design QA failed: ${response.status}`);
+  }
+
+  return normalizeDesignQa(extractJson<unknown>(responseText(payload), null));
 }
 
 export async function reviewDesignPlanWithOpenAI(context: {

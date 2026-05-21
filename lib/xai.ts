@@ -94,6 +94,7 @@ function compactRequirements(requirements: Record<string, unknown>) {
   return {
     special_requirements: limitText(requirements.special_requirements, 700),
     architect_answers: limitText(requirements.architect_answers, 900),
+    conversation_history: limitText(requirements.conversation_history, 1200),
     improvement_request: limitText(requirements.improvement_request, 700),
     main_supply_source: limitText(requirements.main_supply_source, 700),
     rooms: compactList(analysis.rooms, 20),
@@ -358,8 +359,10 @@ async function createGrokDesignPlan(context: {
 - clear wiring/cable route plan with separate light, switch/control, and socket outlet circuits
 - emergency lighting, fire alarm, data/CCTV where applicable
 - any real-world assumptions used
+- use the conversation history and architect answers as binding design context, especially special room uses, equipment loads, floor-specific requests, and main supply/source location
 - final pre-drawing completeness check that every relevant zone has FL lighting, S manual switch control, P socket outlet coverage, DB/circuit numbering, and electrician-readable wiring routes
 - explicit note that no floor type is exempt from lighting, switch, socket, DB, circuit numbering, and electrician-readable wiring routes
+- explicit note that the dashboard/PDF renders the clean symbol legend and BOQ separately, so the image should use compact symbols and IDs instead of long blurry legend text
 
 Project: ${context.projectName}
 Floor: ${context.floorName}

@@ -1,16 +1,22 @@
 import { DEFAULT_SYMBOL_LEGEND } from "@/lib/constants";
-import { fallbackBoqFromDesign } from "@/lib/boq";
 import { getBaseUrl, getEnv } from "@/lib/env";
 import { convertPdfToPngPages, createFloorPdf, createProjectPackagePdf } from "@/lib/pdf-utils";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
-import { createElectricalDesignWithOpenAI, generateDesignPackageWithOpenAI } from "@/lib/openai";
-import { analyzeFloorPlan, evaluateFinalDesignImageWithGrok, fallbackAnnotations, generateQuestions, improveDesignTextReadability, normalizeAnnotations } from "@/lib/xai";
-import type { Design, Floor, Job, JobType, Project } from "@/types";
+import { evaluateDesignImageWithOpenAI, improveDesignTextWithOpenAI } from "@/lib/openai";
+import {
+  analyzeFloorPlan,
+  fallbackAnnotations,
+  generateBoqItems,
+  generateDesignCorrectionDraftImage,
+  generateDesignDraftImage,
+  generateQuestions,
+  normalizeAnnotations
+} from "@/lib/xai";
+import type { BoqItem, Conversation, Design, Floor, Job, JobType, Project } from "@/types";
 
 const MAX_JOB_ATTEMPTS = 3;
-const MAX_DESIGN_ATTEMPTS = 3;
 const STALE_PROCESSING_MINUTES = 6;
 
 export async function createJob(type: JobType, payload: Record<string, unknown>) {
@@ -38,8 +44,28 @@ function jobErrorMessage(error: unknown) {
   return String(error);
 }
 
-function qaIssueSummary(qa?: { missing_defaults?: string[]; coverage_issues?: string[]; drawing_issues?: string[] } | null) {
-  const issues = [...(qa?.missing_defaults ?? []), ...(qa?.coverage_issues ?? []), ...(qa?.drawing_issues ?? [])].filter(Boolean);
+function qaIssueSummary(
+  qa?:
+    | {
+        missing_defaults?: string[];
+        coverage_issues?: string[];
+        drawing_issues?: string[];
+        readability_issues?: string[];
+        symbol_issues?: string[];
+        requirement_issues?: string[];
+        boq_issues?: string[];
+      }
+    | null
+) {
+  const issues = [
+    ...(qa?.missing_defaults ?? []),
+    ...(qa?.coverage_issues ?? []),
+    ...(qa?.drawing_issues ?? []),
+    ...(qa?.readability_issues ?? []),
+    ...(qa?.symbol_issues ?? []),
+    ...(qa?.requirement_issues ?? []),
+    ...(qa?.boq_issues ?? [])
+  ].filter(Boolean);
   return issues.join("; ");
 }
 
@@ -251,6 +277,26 @@ async function designImageInput(design?: Design | null) {
   return null;
 }
 
+async function uploadGeneratedImage(imagePath: string, image: { url?: string; b64_json?: string }) {
+  if (image.url) return uploadRemoteImage(imagePath, image.url);
+  if (image.b64_json) return uploadProjectFile(imagePath, Buffer.from(image.b64_json, "base64"), "image/png");
+  throw new Error("Generated design image returned no URL or base64 payload");
+}
+
+async function recentConversationContext(projectId: string, floorId: string) {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from("conversations")
+    .select("sender,message,created_at")
+    .eq("project_id", projectId)
+    .or(`floor_id.eq.${floorId},floor_id.is.null`)
+    .order("created_at", { ascending: false })
+    .limit(12);
+  return ((data ?? []) as Pick<Conversation, "sender" | "message" | "created_at">[])
+    .reverse()
+    .map((item) => ({ sender: item.sender, message: item.message, created_at: item.created_at }));
+}
+
 export function chooseDesignEditSource(input: { improvementRequest?: string; originalImageUrl: string | null; previousDesignImageUrl?: string | null }) {
   return input.improvementRequest && input.previousDesignImageUrl ? input.previousDesignImageUrl : input.originalImageUrl;
 }
@@ -371,13 +417,9 @@ async function processGenerateDesign(job: Job) {
     floorId: string;
     improvementRequest?: string;
   };
-  const phase = typeof job.payload.phase === "string" ? job.payload.phase : "openai_design";
-  if (phase === "qa_design") {
-    await processDesignQaStage(job);
-    return null;
-  }
-  if (phase === "finalize_design") {
-    await processDesignFinalizeStage(job);
+  const phase = typeof job.payload.phase === "string" ? job.payload.phase : "grok_design";
+  if (phase === "openai_qa") {
+    await processOpenAiQaStage(job);
     return null;
   }
 
@@ -394,127 +436,238 @@ async function processGenerateDesign(job: Job) {
     (floor.architectural_image_path ? `data:image/png;base64,${await fetchStorageBase64(floor.architectural_image_path)}` : null);
   const latestDesign = (existing?.[0] as Design | undefined) ?? null;
   const revisionSourceImageUrl = improvementRequest ? await designImageInput(latestDesign) : null;
+  const correctionPrompt = typeof job.payload.correctionPrompt === "string" ? job.payload.correctionPrompt : null;
   const designEditSourceImageUrl = chooseDesignEditSource({
-    improvementRequest,
+    improvementRequest: improvementRequest ?? correctionPrompt ?? undefined,
     originalImageUrl: sourceImageUrl,
-    previousDesignImageUrl: revisionSourceImageUrl
+    previousDesignImageUrl: (typeof job.payload.previousDesignUrl === "string" ? job.payload.previousDesignUrl : null) ?? revisionSourceImageUrl
   });
 
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
-  if (!designEditSourceImageUrl) throw new Error("Floor has no image source for OpenAI design generation");
+  if (!designEditSourceImageUrl) throw new Error("Floor has no image source for Grok design generation");
+  const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
+  const legend = mergeLegendWithDefaults(DEFAULT_SYMBOL_LEGEND);
+  const conversationHistory = await recentConversationContext(projectId, floorId);
   const baseDraftRequirements = {
     ai_analysis: floor.ai_analysis,
     architect_answers: floor.architect_answers,
     special_requirements: project.special_requirements,
+    conversation_history: conversationHistory,
     architectural_image_url: floor.architectural_image_url,
     original_architectural_image_url: sourceImageUrl,
     previous_design: latestDesign,
-    improvement_request: improvementRequest
+    improvement_request: improvementRequest,
+    main_supply_source: floor.architect_answers?.main_supply_source,
+    correction_prompt: correctionPrompt,
+    design_attempt: attempt,
+    symbol_legend: legend,
+    annotations
   };
-  const correctionPrompt = typeof job.payload.correctionPrompt === "string" ? job.payload.correctionPrompt : null;
-  const inputImageUrl = attempt > 1 && typeof job.payload.previousDesignUrl === "string" ? job.payload.previousDesignUrl : designEditSourceImageUrl;
   const projectCode = project.project_code ?? project.id.slice(0, 6).toUpperCase();
-  console.log("[jobs:generate_design] OpenAI design stage started", { jobId: job.id, projectId, floorId, version, attempt });
-  const image = await createElectricalDesignWithOpenAI({
+
+  console.log("[jobs:generate_design] Grok design stage started", { jobId: job.id, projectId, floorId, version, attempt, phase });
+  const draftImage =
+    phase === "grok_fix" && correctionPrompt
+      ? await generateDesignCorrectionDraftImage({
+          projectName: project.project_name,
+          projectCode,
+          floorName: floor.floor_name,
+          floorNumber: floor.floor_number,
+          buildingPurpose: project.building_purpose,
+          revision: version,
+          sourceImageUrl: designEditSourceImageUrl,
+          correctionPrompt,
+          requirements: baseDraftRequirements
+        })
+      : await generateDesignDraftImage({
+          projectName: project.project_name,
+          projectCode,
+          floorName: floor.floor_name,
+          floorNumber: floor.floor_number,
+          buildingPurpose: project.building_purpose,
+          companyName: project.company_name,
+          revision: version,
+          sourceImageUrl: designEditSourceImageUrl,
+          mode: improvementRequest ? "revision" : "new",
+          requirements: baseDraftRequirements
+        });
+  console.log("[jobs:generate_design] Grok design stage completed", { jobId: job.id, projectId, floorId, version, attempt });
+
+  console.log("[jobs:generate_design] OpenAI readability stage started", { jobId: job.id, projectId, floorId, version, attempt });
+  const cleanedImage = await improveDesignTextWithOpenAI(draftImage, {
     projectName: project.project_name,
-    projectCode,
     floorName: floor.floor_name,
-    floorNumber: floor.floor_number,
-    buildingPurpose: project.building_purpose,
     revision: version,
-    sourceImageUrl: inputImageUrl,
-    originalPlanImageUrl: sourceImageUrl,
-    mode: attempt > 1 ? "correction" : improvementRequest ? "revision" : "new",
-    correctionPrompt,
-    requirements: {
-      ...baseDraftRequirements,
-      main_supply_source: floor.architect_answers?.main_supply_source,
-      correction_prompt: correctionPrompt,
-      design_attempt: attempt
-    }
+    originalPlanImageUrl: sourceImageUrl
   });
-  console.log("[jobs:generate_design] OpenAI design stage completed", { jobId: job.id, projectId, floorId, version, attempt });
-  console.log("[jobs:generate_design] Grok text edit stage started", { jobId: job.id, projectId, floorId, version, attempt });
-  const cleanedImage = await improveDesignTextReadability(image, {
-    projectName: project.project_name,
-    floorName: floor.floor_name,
-    revision: version
-  });
-  const designUrl = cleanedImage.url ? await uploadRemoteImage(imagePath, cleanedImage.url) : await uploadProjectFile(imagePath, Buffer.from(cleanedImage.b64_json!, "base64"), "image/png");
-  console.log("[jobs:generate_design] Grok text edit stage completed", { jobId: job.id, projectId, floorId, version, attempt, imagePath });
+  const designUrl = await uploadGeneratedImage(imagePath, cleanedImage);
+  console.log("[jobs:generate_design] OpenAI readability stage completed", { jobId: job.id, projectId, floorId, version, attempt, imagePath });
 
-  await createDelayedJob(job.type, {
-    projectId,
-    floorId,
-    improvementRequest,
-    phase: "qa_design",
-    version,
-    designAttempt: attempt,
-    designUrl,
-    imagePath
-  });
-  return null;
-}
-
-async function processDesignQaStage(job: Job) {
-  const { projectId, floorId, improvementRequest, version, designAttempt, designUrl, imagePath } = job.payload as {
-    projectId: string;
-    floorId: string;
-    improvementRequest?: string;
-    version: number;
-    designAttempt: number;
-    designUrl: string;
-    imagePath: string;
-  };
-  const { project, floor } = await getProjectFloor(projectId, floorId);
-  const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
-  const legend = DEFAULT_SYMBOL_LEGEND;
-  const qaContext = {
+  const boqContext = {
+    ...baseDraftRequirements,
     ai_analysis: floor.ai_analysis,
     architect_answers: floor.architect_answers,
     special_requirements: project.special_requirements,
     improvement_request: improvementRequest,
     symbol_legend: legend,
     annotations,
+    final_design_image_url: designUrl
+  };
+  console.log("[jobs:generate_design] Grok BOQ stage started", { jobId: job.id, projectId, floorId, version, attempt });
+  const boqItems = await generateBoqItems({
+    projectName: project.project_name,
+    floorName: floor.floor_name,
+    buildingPurpose: project.building_purpose,
+    finalDesignImageUrl: designUrl,
+    requirements: boqContext
+  });
+  console.log("[jobs:generate_design] Grok BOQ stage completed", { jobId: job.id, projectId, floorId, version, attempt, itemCount: boqItems.length });
+
+  const design = await saveGeneratedDesign({
+    project,
+    floor,
+    projectId,
+    floorId,
+    version,
+    designUrl,
+    imagePath,
+    annotations,
+    symbolLegend: legend,
+    boqItems,
+    improvementRequest,
+    revisionNotes: correctionPrompt ? `OpenAI QA correction applied by Grok: ${correctionPrompt}` : null,
+    existing: (existing ?? []) as Design[]
+  });
+
+  await createDelayedJob(job.type, {
+    projectId,
+    floorId,
+    improvementRequest,
+    phase: "openai_qa",
+    version,
+    designAttempt: attempt,
+    designId: design.id,
+    designUrl,
+    imagePath
+  });
+  return null;
+}
+
+async function saveGeneratedDesign(input: {
+  project: Project;
+  floor: Floor;
+  projectId: string;
+  floorId: string;
+  version: number;
+  designUrl: string;
+  imagePath: string;
+  annotations: Design["annotations"];
+  symbolLegend: Design["symbol_legend"];
+  boqItems: BoqItem[];
+  improvementRequest?: string;
+  revisionNotes?: string | null;
+  existing: Design[];
+}) {
+  const supabase = getSupabaseAdmin();
+  const finalLegend = mergeLegendWithDefaults(input.symbolLegend);
+  const designPayload: Record<string, unknown> = {
+    floor_id: input.floorId,
+    version: input.version,
+    design_image_url: input.designUrl,
+    design_image_path: input.imagePath,
+    annotations: input.annotations,
+    symbol_legend: finalLegend,
+    boq_items: input.boqItems,
+    revision_notes: input.revisionNotes ?? null,
+    improvement_request: input.improvementRequest ?? null
+  };
+  const { data: design, error } = await supabase.from("designs").insert(designPayload).select("*").single();
+  if (error) throw error;
+
+  const keep = input.existing.slice(1).map((item) => item.id);
+  if (keep.length) await supabase.from("designs").delete().in("id", keep);
+
+  await supabase.from("files").insert({ project_id: input.projectId, floor_id: input.floorId, file_type: "electrical_design", storage_path: input.imagePath, public_url: input.designUrl });
+  await supabase.from("floors").update({ status: "design_ready" }).eq("id", input.floorId);
+  await supabase.from("bot_sessions").update({ state: "AWAITING_APPROVAL" }).eq("project_id", input.projectId);
+
+  if (input.project.telegram_chat_id) {
+    const message =
+      input.version > 1
+        ? `Grok has updated the electrical design and BOQ for ${input.floor.floor_name} using OpenAI QA feedback. The revised design is ready for engineering review.`
+        : `Grok has generated the electrical design and BOQ for ${input.floor.floor_name}. OpenAI is checking readability and symbols in the background while the design is available for engineering review.`;
+    await sendTelegramMessage(input.project.telegram_chat_id, message);
+    await supabase.from("conversations").insert({ project_id: input.projectId, floor_id: input.floorId, sender: "bot", message });
+  }
+
+  return design as Design;
+}
+
+async function processOpenAiQaStage(job: Job) {
+  const { projectId, floorId, improvementRequest, version, designAttempt, designId, designUrl } = job.payload as {
+    projectId: string;
+    floorId: string;
+    improvementRequest?: string;
+    version: number;
+    designAttempt: number;
+    designId: string;
+    designUrl: string;
+  };
+  const supabase = getSupabaseAdmin();
+  const { project, floor } = await getProjectFloor(projectId, floorId);
+  const { data: designData } = await supabase.from("designs").select("*").eq("id", designId).maybeSingle();
+  const design = designData as Design | null;
+  const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
+  const qaContext = {
+    ai_analysis: floor.ai_analysis,
+    architect_answers: floor.architect_answers,
+    special_requirements: project.special_requirements,
+    improvement_request: improvementRequest,
+    symbol_legend: design?.symbol_legend?.length ? design.symbol_legend : DEFAULT_SYMBOL_LEGEND,
+    boq_items: design?.boq_items ?? [],
+    annotations,
     final_design_image_url: designUrl,
     correction_attempt: designAttempt - 1
   };
-  console.log("[jobs:generate_design] visual QA stage started", { jobId: job.id, projectId, floorId, version, attempt: designAttempt });
-  const qa = await evaluateFinalDesignImageWithGrok({
+  console.log("[jobs:generate_design] OpenAI QA stage started", { jobId: job.id, projectId, floorId, version, attempt: designAttempt });
+  const qa = await evaluateDesignImageWithOpenAI({
     projectName: project.project_name,
     floorName: floor.floor_name,
     buildingPurpose: project.building_purpose,
     finalDesignImageUrl: designUrl,
     requirements: qaContext
   });
-  console.log("[jobs:generate_design] visual QA stage completed", { jobId: job.id, projectId, floorId, version, attempt: designAttempt, approved: qa.approved, score: qa.score });
-  if (!qa.approved) {
-    if (designAttempt >= MAX_DESIGN_ATTEMPTS) {
-      const reasons = qaIssueSummary(qa) || "Grok visual QA found unresolved design issues after automatic correction";
-      console.warn("[jobs:generate_design] visual QA still has issues after correction; saving for engineering review", { jobId: job.id, projectId, floorId, version, reasons });
-      await createDelayedJob(job.type, {
-        projectId,
-        floorId,
-        improvementRequest,
-        phase: "finalize_design",
-        version,
-        designUrl,
-        imagePath,
-        finalQaSummary: qa,
-        qaWarning: reasons
-      });
-      return;
+  console.log("[jobs:generate_design] OpenAI QA stage completed", { jobId: job.id, projectId, floorId, version, attempt: designAttempt, approved: qa.approved, score: qa.score });
+
+  if (qa.approved) {
+    if (design?.id) {
+      const notes = [design.revision_notes, "OpenAI QA passed: readability, symbol key, defaults, DB/MSU, and BOQ countability checked."].filter(Boolean).join("\n");
+      await supabase.from("designs").update({ revision_notes: notes }).eq("id", design.id);
     }
-    await createDelayedJob(job.type, {
-      projectId,
-      floorId,
-      improvementRequest,
-      phase: "openai_design",
-      version,
-      designAttempt: designAttempt + 1,
-      previousDesignUrl: designUrl,
-      correctionPrompt: qa.correction_prompt
+    return;
+  }
+
+  const reasons = qaIssueSummary(qa) || "OpenAI QA found unresolved readability, symbol, requirement, or BOQ issues.";
+  if (floor.status === "approved") {
+    await supabase.from("conversations").insert({
+      project_id: projectId,
+      floor_id: floorId,
+      sender: "bot",
+      message: `OpenAI QA found issues after approval, so no automatic correction was made. Issues: ${reasons}`
     });
+    return;
+  }
+
+  if (designAttempt >= 2) {
+    if (design?.id) {
+      const notes = [design.revision_notes, `OpenAI QA warning after Grok correction: ${reasons}`].filter(Boolean).join("\n");
+      await supabase.from("designs").update({ revision_notes: notes }).eq("id", design.id);
+    }
+    if (project.telegram_chat_id) {
+      const message = `The electrical design for ${floor.floor_name} is ready for engineering review with OpenAI QA warnings. Issues: ${reasons}`;
+      await sendTelegramMessage(project.telegram_chat_id, message);
+      await supabase.from("conversations").insert({ project_id: projectId, floor_id: floorId, sender: "bot", message });
+    }
     return;
   }
 
@@ -522,105 +675,11 @@ async function processDesignQaStage(job: Job) {
     projectId,
     floorId,
     improvementRequest,
-    phase: "finalize_design",
-    version,
-    designUrl,
-    imagePath,
-    finalQaSummary: qa
+    phase: "grok_fix",
+    designAttempt: designAttempt + 1,
+    previousDesignUrl: designUrl,
+    correctionPrompt: qa.correction_prompt || reasons
   });
-}
-
-async function processDesignFinalizeStage(job: Job) {
-  const { projectId, floorId, improvementRequest, version, designUrl, imagePath, finalQaSummary, qaWarning } = job.payload as {
-    projectId: string;
-    floorId: string;
-    improvementRequest?: string;
-    version: number;
-    designUrl: string;
-    imagePath: string;
-    finalQaSummary?: Record<string, unknown>;
-    qaWarning?: string;
-  };
-  const supabase = getSupabaseAdmin();
-  const { project, floor } = await getProjectFloor(projectId, floorId);
-  const { data: existing } = await supabase.from("designs").select("*").eq("floor_id", floorId).order("version", { ascending: false }).limit(2);
-  const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
-  const legend = DEFAULT_SYMBOL_LEGEND;
-  const boqContext = {
-    ai_analysis: floor.ai_analysis,
-    architect_answers: floor.architect_answers,
-    special_requirements: project.special_requirements,
-    improvement_request: improvementRequest,
-    symbol_legend: legend,
-    annotations
-  };
-  let boqItems: Design["boq_items"] = [];
-  let openAiLegend: Design["symbol_legend"] = [];
-  let boqWarning: string | null = null;
-  try {
-    console.log("[jobs:generate_design] OpenAI BOQ/legend stage started", { jobId: job.id, projectId, floorId, version });
-    const designPackage = await generateDesignPackageWithOpenAI({
-      projectName: project.project_name,
-      floorName: floor.floor_name,
-      buildingPurpose: project.building_purpose,
-      finalDesignImageUrl: designUrl,
-      requirements: {
-        ...boqContext,
-        final_visual_qa: finalQaSummary,
-        final_design_image_url: designUrl
-      }
-    });
-    boqItems = designPackage.boq_items;
-    openAiLegend = designPackage.symbol_legend;
-    console.log("[jobs:generate_design] OpenAI BOQ/legend stage completed", { jobId: job.id, projectId, floorId, version, itemCount: boqItems.length, legendCount: openAiLegend.length });
-  } catch (boqError) {
-    boqWarning = `OpenAI BOQ/legend generation failed: ${jobErrorMessage(boqError)}`;
-    boqItems = fallbackBoqFromDesign({ symbol_legend: legend });
-    console.error("OpenAI BOQ/legend generation failed after design image was created", boqError);
-  }
-  if (!boqItems.length && !boqWarning) {
-    boqWarning = "OpenAI BOQ generation returned no items for this design.";
-    boqItems = fallbackBoqFromDesign({ symbol_legend: legend });
-  }
-  const finalLegend = mergeLegendWithDefaults(openAiLegend.length ? openAiLegend : legend);
-  const revisionNotes = [qaWarning ? `Grok QA warning: ${qaWarning}` : null, boqWarning].filter(Boolean).join("\n");
-
-  const designPayload: Record<string, unknown> = {
-    floor_id: floorId,
-    version,
-    design_image_url: designUrl,
-    design_image_path: imagePath,
-    annotations,
-    symbol_legend: finalLegend,
-    boq_items: boqItems,
-    revision_notes: revisionNotes || null,
-    improvement_request: improvementRequest ?? null
-  };
-  let { data: design, error } = await supabase.from("designs").insert(designPayload).select("*").single();
-  if (error && /boq_items|schema cache|column/i.test(`${error.message ?? ""} ${error.details ?? ""}`)) {
-    delete designPayload.boq_items;
-    const retry = await supabase.from("designs").insert(designPayload).select("*").single();
-    design = retry.data;
-    error = retry.error;
-  }
-  if (error) throw error;
-
-  const keep = ((existing ?? []) as Design[]).slice(1).map((item) => item.id);
-  if (keep.length) await supabase.from("designs").delete().in("id", keep);
-
-  await supabase.from("files").insert({ project_id: projectId, floor_id: floorId, file_type: "electrical_design", storage_path: imagePath, public_url: designUrl });
-  await supabase.from("floors").update({ status: "design_ready" }).eq("id", floorId);
-  await supabase.from("bot_sessions").update({ state: "AWAITING_APPROVAL" }).eq("project_id", projectId);
-
-  if (project.telegram_chat_id) {
-    const message = qaWarning
-      ? `The electrical design for ${floor.floor_name} has been generated with Grok QA warnings and sent to the engineering team for review. Issues: ${qaWarning}`
-      : `The electrical design for ${floor.floor_name} has been generated and sent to the engineering team for review. I'll notify you once it's approved.`;
-    await sendTelegramMessage(project.telegram_chat_id, message);
-    await supabase.from("conversations").insert({ project_id: projectId, floor_id: floorId, sender: "bot", message });
-  }
-
-  return design as Design;
 }
 
 async function processPdfExport(job: Job) {

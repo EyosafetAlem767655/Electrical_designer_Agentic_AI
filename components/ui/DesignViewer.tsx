@@ -55,7 +55,7 @@ export function DesignViewer({ design }: { design?: Design | null }) {
         <p className="mt-1 text-xs text-[#c9b9a6]/56">Electrical systems used in the current design.</p>
         {design?.revision_notes ? (
           <div className="mt-4 rounded border border-[#d6b17d]/24 bg-[#d6b17d]/10 p-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#f5e1bd]/72">Grok QA Warning</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#f5e1bd]/72">QA Notes</p>
             <p className="mt-2 text-sm leading-5 text-[#fffaf0]/78">{design.revision_notes}</p>
           </div>
         ) : null}

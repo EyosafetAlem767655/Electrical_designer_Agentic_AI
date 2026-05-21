@@ -31,13 +31,20 @@ describe("xAI image generation", () => {
       floorNumber: 0,
       revision: 1,
       sourceImageUrl: "https://example.com/source-plan.png",
-      requirements: { rooms: ["Lobby"] }
+      requirements: {
+        conversation_history: [{ sender: "architect", message: "Main supply enters from transformer room at north wall." }],
+        main_supply_source: "Transformer room north wall",
+        rooms: ["Lobby"]
+      }
     });
 
     expect(image.url).toBe("https://example.com/design.png");
     expect(requests[0].url).toBe("https://api.x.ai/v1/chat/completions");
     expect(JSON.stringify(requests[0].body.messages)).toContain("room-by-room fluorescent lamp fixture placement");
+    expect(JSON.stringify(requests[0].body.messages)).toContain("conversation history and architect answers");
+    expect(JSON.stringify(requests[0].body.messages)).toContain("Transformer room north wall");
     expect(JSON.stringify(requests[0].body.messages)).toContain("final pre-drawing completeness check");
+    expect(JSON.stringify(requests[0].body.messages)).toContain("dashboard/PDF renders the clean symbol legend and BOQ separately");
     expect(requests[1].url).toBe("https://api.x.ai/v1/images/edits");
     expect(requests[1].body).toMatchObject({
       model: "grok-imagine-image-quality",
