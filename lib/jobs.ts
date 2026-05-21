@@ -18,7 +18,7 @@ export async function createJob(type: JobType, payload: Record<string, unknown>)
   return data as Job;
 }
 
-async function createDelayedJob(type: JobType, payload: Record<string, unknown>, delayMs = 5_000) {
+async function createDelayedJob(type: JobType, payload: Record<string, unknown>, delayMs = 0) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("jobs")

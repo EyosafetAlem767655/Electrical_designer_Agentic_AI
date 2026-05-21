@@ -12,6 +12,7 @@ import { RetryJobButton } from "@/components/ui/RetryJobButton";
 import { FLOOR_STATUS_LABELS, PROJECT_STATUS_LABELS } from "@/lib/constants";
 import { getProjectBundle } from "@/lib/data";
 import { getEnv } from "@/lib/env";
+import { describeJobStage } from "@/lib/job-stage";
 import { formatDateTime } from "@/lib/utils";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -27,6 +28,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const botStartLink = `https://t.me/${botUsername}?start=${encodeURIComponent(bundle.project.project_code ?? bundle.project.id)}`;
   const failedJobs = bundle.jobs.filter((job) => job.status === "failed");
   const activeJobs = bundle.jobs.filter((job) => job.status === "pending" || job.status === "processing");
+  const activeJobStage = describeJobStage(activeJobs[0]);
+  const failedJobStage = describeJobStage(failedJobs[0]);
 
   return (
     <div className="space-y-5">
@@ -122,6 +125,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               <p className="mt-1 text-sm text-[#efe4d4]/62">{activeJobs.length} active job{activeJobs.length === 1 ? "" : "s"} - {failedJobs.length} failed</p>
               {failedJobs[0] ? (
                 <div className="mt-3 rounded border border-rose-300/24 bg-rose-500/10 p-3 text-sm leading-5 text-rose-100">
+                  <p className="font-semibold">{failedJobStage?.label ?? failedJobs[0].type}</p>
+                  {failedJobStage?.detail ? <p className="mt-1 text-xs text-rose-100/72">{failedJobStage.detail}</p> : null}
                   <p>
                     <AlertTriangle className="mr-2 inline h-4 w-4" />
                     {failedJobs[0].type}: {failedJobs[0].error ?? "Unknown failure"}
@@ -130,6 +135,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 </div>
               ) : activeJobs[0] ? (
                 <div className="mt-3 rounded border border-[#d6b17d]/24 bg-[#d6b17d]/10 p-3 text-sm leading-5 text-[#fffaf0]">
+                  <p className="font-semibold">{activeJobStage?.label ?? activeJobs[0].type}</p>
+                  {activeJobStage?.detail ? <p className="mt-1 text-xs text-[#efe4d4]/64">{activeJobStage.detail}</p> : null}
                   <p>
                     {activeJobs[0].type}: {activeJobs[0].status}
                     {activeJobs[0].error ? ` - ${activeJobs[0].error}` : ""}

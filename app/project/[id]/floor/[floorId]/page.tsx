@@ -8,6 +8,7 @@ import { NeonButton } from "@/components/ui/NeonButton";
 import { ProjectActions } from "@/components/ui/ProjectActions";
 import { FLOOR_STATUS_LABELS } from "@/lib/constants";
 import { getFloorBundle } from "@/lib/data";
+import { describeJobStage } from "@/lib/job-stage";
 import { formatDateTime } from "@/lib/utils";
 
 export default async function FloorDesignPage({ params }: { params: Promise<{ id: string; floorId: string }> }) {
@@ -16,6 +17,8 @@ export default async function FloorDesignPage({ params }: { params: Promise<{ id
   if (!bundle) notFound();
   const currentDesign = bundle.designs[0] ?? null;
   const previousDesign = bundle.designs[1] ?? null;
+  const activeFloorJob = bundle.jobs.find((job) => (job.status === "pending" || job.status === "processing") && job.payload?.floorId === bundle.floor.id) ?? null;
+  const activeFloorStage = describeJobStage(activeFloorJob);
 
   return (
     <div className="space-y-5">
@@ -79,6 +82,17 @@ export default async function FloorDesignPage({ params }: { params: Promise<{ id
                 <p className="mt-2 font-semibold text-[#fffaf0]">{currentDesign?.version ?? "Pending"}</p>
               </div>
             </div>
+            {activeFloorJob ? (
+              <div className="mt-3 rounded border border-[#d6b17d]/24 bg-[#d6b17d]/10 p-3">
+                <p className="text-xs uppercase tracking-[0.1em] text-[#c9b9a6]/58">Current Design Stage</p>
+                <p className="mt-2 font-semibold text-[#fffaf0]">{activeFloorStage?.label ?? activeFloorJob.type}</p>
+                {activeFloorStage?.detail ? <p className="mt-1 text-sm text-[#efe4d4]/64">{activeFloorStage.detail}</p> : null}
+                <p className="mt-2 text-xs text-[#efe4d4]/52">
+                  {activeFloorJob.type}: {activeFloorJob.status}
+                  {activeFloorJob.error ? ` - ${activeFloorJob.error}` : ""}
+                </p>
+              </div>
+            ) : null}
             <div className="mt-4">
               <ProjectActions projectId={id} floor={bundle.floor} design={currentDesign} />
             </div>
