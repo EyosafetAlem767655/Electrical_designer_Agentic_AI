@@ -553,6 +553,59 @@ Overlay requirements:
   return firstPassImage;
 }
 
+export async function generateDesignCorrectionDraftImage(context: {
+  projectName: string;
+  projectCode: string;
+  floorName: string;
+  floorNumber: number;
+  buildingPurpose?: string | null;
+  revision: number;
+  sourceImageUrl: string;
+  correctionPrompt: string;
+  requirements: Record<string, unknown>;
+}) {
+  const compactedRequirements = compactRequirements(context.requirements);
+  const prompt = clampPrompt(`Edit the provided generated electrical design image as a correction pass. Preserve the architectural base plan exactly and preserve all already-correct electrical overlay content.
+
+Project: ${context.projectName}
+Floor: ${context.floorName}
+Drawing No: ENT-${context.projectCode}-E-${context.floorNumber}
+Revision: ${context.revision}
+Building purpose: ${context.buildingPurpose ?? "not specified"}
+
+Grok visual QA correction required:
+${limitText(context.correctionPrompt, 1100)}
+
+Compacted requirements and analysis:
+${limitText(compactedRequirements, 1200)}
+
+${DESIGN_PROMPT_RULES}
+
+Correction rules:
+- Do not re-run or redesign the whole drawing. Apply only the QA correction and any directly required electrical overlay additions.
+- Keep the original architectural plan locked: do not alter walls, doors, windows, stairs, columns, dimensions, room labels, parking bays, title text, or architectural symbols.
+- Ensure every applicable room and usable zone has FL fluorescent lamp fixtures, S manual switch control, and P 220-230V earthed socket outlets unless explicitly overridden.
+- Add or repair DB/protection labels, circuit numbers, and electrician-readable routes back to the DB.
+- Keep all labels compact and BOQ-countable: FL, S, P, DB, E, FA, D, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
+- Do not use LED unless the architect explicitly requested LED.
+- Do not add side panels, leader-arrow callouts, large note boxes, title-block expansions, or decorative borders.`);
+
+  const payload = await xaiFetch<{ data?: Array<{ url?: string; b64_json?: string }> }>("images/edits", {
+    model: model("XAI_IMAGE_MODEL", "grok-imagine-image-quality"),
+    prompt,
+    image: {
+      url: context.sourceImageUrl,
+      type: "image_url"
+    }
+  });
+
+  const corrected = payload.data?.[0];
+  if (!corrected?.url && !corrected?.b64_json) {
+    throw new Error("xAI correction image generation returned no image");
+  }
+  return corrected;
+}
+
 export async function evaluateFinalDesignImageWithGrok(context: {
   projectName: string;
   floorName: string;

@@ -5,11 +5,11 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
 import { improveDesignTextWithOpenAI } from "@/lib/openai";
-import { analyzeFloorPlan, evaluateFinalDesignImageWithGrok, fallbackAnnotations, generateBoqItems, generateDesignDraftImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
+import { analyzeFloorPlan, evaluateFinalDesignImageWithGrok, fallbackAnnotations, generateBoqItems, generateDesignCorrectionDraftImage, generateDesignDraftImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
 const MAX_JOB_ATTEMPTS = 3;
-const STALE_PROCESSING_MINUTES = 8;
+const STALE_PROCESSING_MINUTES = 6;
 
 export async function createJob(type: JobType, payload: Record<string, unknown>) {
   const supabase = getSupabaseAdmin();
@@ -384,30 +384,52 @@ async function processGenerateDesign(job: Job) {
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const correctionPrompt = finalQaSummary?.correction_prompt;
-    const draftImage = await generateDesignDraftImage({
-      projectName: project.project_name,
-      projectCode: project.project_code ?? project.id.slice(0, 6).toUpperCase(),
-      floorName: floor.floor_name,
-      floorNumber: floor.floor_number,
-      buildingPurpose: project.building_purpose,
-      companyName: project.company_name,
-      revision: version,
-      sourceImageUrl: attempt === 0 ? designEditSourceImageUrl : designUrl,
-      mode: attempt > 0 || improvementRequest ? "revision" : "new",
-      requirements: {
-        ...baseDraftRequirements,
-        correction_prompt: correctionPrompt,
-        design_council_attempt: attempt + 1
-      }
-    });
+    const projectCode = project.project_code ?? project.id.slice(0, 6).toUpperCase();
+    console.log("[jobs:generate_design] image draft started", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1 });
+    const draftImage =
+      attempt === 0
+        ? await generateDesignDraftImage({
+            projectName: project.project_name,
+            projectCode,
+            floorName: floor.floor_name,
+            floorNumber: floor.floor_number,
+            buildingPurpose: project.building_purpose,
+            companyName: project.company_name,
+            revision: version,
+            sourceImageUrl: designEditSourceImageUrl,
+            mode: improvementRequest ? "revision" : "new",
+            requirements: {
+              ...baseDraftRequirements,
+              design_council_attempt: attempt + 1
+            }
+          })
+        : await generateDesignCorrectionDraftImage({
+            projectName: project.project_name,
+            projectCode,
+            floorName: floor.floor_name,
+            floorNumber: floor.floor_number,
+            buildingPurpose: project.building_purpose,
+            revision: version,
+            sourceImageUrl: designUrl,
+            correctionPrompt: typeof correctionPrompt === "string" ? correctionPrompt : "Correct missing default electrical devices and route labels.",
+            requirements: {
+              ...baseDraftRequirements,
+              correction_prompt: correctionPrompt,
+              design_council_attempt: attempt + 1
+            }
+          });
+    console.log("[jobs:generate_design] image draft completed", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1 });
+    console.log("[jobs:generate_design] OpenAI finishing started", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1 });
     const image = await improveDesignTextWithOpenAI(draftImage, {
       projectName: project.project_name,
       floorName: floor.floor_name,
       revision: version,
       originalPlanImageUrl: sourceImageUrl
     });
+    console.log("[jobs:generate_design] OpenAI finishing completed", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1 });
 
     designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
+    console.log("[jobs:generate_design] visual QA started", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1 });
     const qa = await evaluateFinalDesignImageWithGrok({
       projectName: project.project_name,
       floorName: floor.floor_name,
@@ -419,6 +441,7 @@ async function processGenerateDesign(job: Job) {
         correction_attempt: attempt
       }
     });
+    console.log("[jobs:generate_design] visual QA completed", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1, approved: qa.approved, score: qa.score });
     finalQaSummary = qa as unknown as Record<string, unknown>;
     if (qa.approved) break;
     if (attempt === 1) {
@@ -429,6 +452,7 @@ async function processGenerateDesign(job: Job) {
 
   let boqItems: Design["boq_items"] = [];
   try {
+    console.log("[jobs:generate_design] BOQ generation started", { jobId: job.id, projectId, floorId, version });
     boqItems = await generateBoqItems({
       projectName: project.project_name,
       floorName: floor.floor_name,
@@ -441,6 +465,7 @@ async function processGenerateDesign(job: Job) {
         final_design_image_url: designUrl
       }
     });
+    console.log("[jobs:generate_design] BOQ generation completed", { jobId: job.id, projectId, floorId, version, itemCount: boqItems.length });
   } catch (boqError) {
     console.error("BOQ generation failed after design image was created", boqError);
   }
