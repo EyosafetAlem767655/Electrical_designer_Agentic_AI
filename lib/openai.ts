@@ -1,4 +1,5 @@
 import { getEnv } from "@/lib/env";
+import type { BoqItem, SymbolLegendItem } from "@/types";
 
 type ImageResult = { url?: string; b64_json?: string };
 
@@ -23,6 +24,11 @@ type OpenAiResponsesPayload = {
     }>;
   }>;
   error?: { message?: string };
+};
+
+export type OpenAiDesignPackage = {
+  boq_items: BoqItem[];
+  symbol_legend: SymbolLegendItem[];
 };
 
 const OPENAI_TIMEOUT_MS = 240_000;
@@ -123,6 +129,59 @@ function responseText(payload: OpenAiResponsesPayload) {
       .join("\n")
       .trim() ?? ""
   );
+}
+
+function numberValue(value: unknown, fallback = 1) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : fallback;
+}
+
+function normalizeOpenAiBoqItems(value: unknown): BoqItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item): BoqItem | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const name = typeof record.item === "string" && record.item.trim() ? record.item.trim() : null;
+      if (!name) return null;
+      return {
+        category: typeof record.category === "string" && record.category.trim() ? record.category.trim() : "Electrical",
+        item: name,
+        specification: typeof record.specification === "string" && record.specification.trim() ? record.specification.trim() : "EBCS/IEC compliant electrical material",
+        unit: typeof record.unit === "string" && record.unit.trim() ? record.unit.trim() : "pcs",
+        quantity: numberValue(record.quantity),
+        standard: typeof record.standard === "string" && record.standard.trim() ? record.standard.trim() : "EBCS, IEC 60364",
+        notes: typeof record.notes === "string" && record.notes.trim() ? record.notes.trim() : "Site verify final quantity"
+      };
+    })
+    .filter((item): item is BoqItem => Boolean(item));
+}
+
+function normalizeOpenAiLegend(value: unknown): SymbolLegendItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item): SymbolLegendItem | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const symbol = typeof record.symbol === "string" && record.symbol.trim() ? record.symbol.trim().slice(0, 12) : null;
+      const label = typeof record.label === "string" && record.label.trim() ? record.label.trim().slice(0, 48) : null;
+      if (!symbol || !label) return null;
+      return {
+        symbol,
+        label,
+        color: typeof record.color === "string" && record.color.trim() ? record.color.trim() : "#2f8178",
+        description: typeof record.description === "string" && record.description.trim() ? record.description.trim().slice(0, 160) : label
+      };
+    })
+    .filter((item): item is SymbolLegendItem => Boolean(item));
+}
+
+function normalizeOpenAiDesignPackage(value: unknown): OpenAiDesignPackage {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    boq_items: normalizeOpenAiBoqItems(record.boq_items),
+    symbol_legend: normalizeOpenAiLegend(record.symbol_legend)
+  };
 }
 
 export async function reviewDesignPlanWithOpenAI(context: {
@@ -242,12 +301,15 @@ Input image rules:
 Hard requirements:
 - Preserve the architectural floor plan exactly. Do not alter, redraw, crop, stretch, erase, simplify, move, or reinterpret any wall, door, window, stair, column, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
 - Add only electrical overlay content: fluorescent lamp fixtures, manual wall switches, 220-230V earthed socket outlets, DB/protection mark, circuit numbers, wiring routes, emergency/fire/data devices where applicable.
-- Unless explicitly requested otherwise, every room and practical usable zone must have fluorescent lamp coverage, manual switch control near entrances/control points, and 220-230V earthed socket outlet coverage.
+- Non-negotiable defaults for every floor: fluorescent lamp fixtures, manual switches, and 220-230V earthed socket outlets. Do not omit these systems. Every room, lobby, stair, service room, corridor, parking bay zone, ramp, equipment area, and practical usable zone needs visible fluorescent lighting coverage, manual switch/control points, and socket outlets where physically practical.
+- For basement/parking floors, add repeated fluorescent fixtures across open parking bays, drive aisles, ramps, corners, stair/lift lobbies, generator/electrical/storage rooms, and service alcoves. Add manual switches at every entrance, ramp access, stair/lift lobby, generator/electrical room, and service alcove. Add earthed sockets at DB/equipment points, perimeter/column maintenance points, generator/electrical rooms, security/attendant/cleaning points, and practical service zones.
+- Place the main supply unit/source from transformer or utility incomer as MSU if known. If unknown, mark the likely incoming source as MSU? near the DB/incomer and route DB logic from it.
 - Use LED only if the architect/project requirements explicitly request LED.
 - Use Ethiopian/EBCS and IEC/EU language: 220-230V single-phase, 380-400V three-phase where needed, 50Hz, copper conductors in mm2, DIN-rail MCB/RCBO/RCCB, PVC conduit/trunking, IP-rated fittings for wet/outdoor zones.
 - Avoid US/NEC terms such as AWG, NEMA, 120V, split-phase, or receptacle.
 - Make the drawing electrician-readable and BOQ-countable through clear symbols, consistent colors, visible routes, and simple circuit IDs.
-- Text discipline is critical: do not draw a legend, title block, bill of quantity table, schedule, notes panel, side panel, large note box, leader-arrow callout, title-block expansion, decorative border, or paragraph text inside the image. The dashboard renders a clean legend separately.
+- Include a small clean symbol legend/symbol sheet only if it can be kept readable inside an existing clear margin. Use symbol plus short meaning only, such as "FL - fluorescent lamp", "S - manual switch", "P - socket outlet", "DB - distribution board", "MSU - main supply". Do not include BOQ quantities, specifications, schedules, paragraphs, or title-block data inside the image.
+- Text discipline is critical: no bill of quantity table, schedule, notes panel, side panel, large note box, leader-arrow callout, title-block expansion, decorative border, or paragraph text inside the image.
 - Avoid long words and specifications inside the drawing. Use only short readable tags where unavoidable: DB, FL, S, P, E, FA, D, EV1-EV5, L1-L6, P1-P6. Do not write labels like "fluorescent batten", "socket outlet", "generator 80kVA", cable sizes, lux values, or standards in the image.
 - If an existing generated image contains a messy AI-drawn legend/title block, remove or ignore that generated legend content and keep the electrical overlay on the original plan clean.
 
@@ -285,6 +347,77 @@ Requirements and analysis: ${JSON.stringify(context.requirements)}`
   const image = payload.data?.[0];
   if (!image?.url && !image?.b64_json) throw new Error("OpenAI electrical design image returned no image");
   return image;
+}
+
+export async function generateDesignPackageWithOpenAI(context: {
+  projectName: string;
+  floorName: string;
+  buildingPurpose?: string | null;
+  finalDesignImageUrl: string;
+  requirements: Record<string, unknown>;
+}) {
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${requireOpenAiKey()}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: openAiModel("OPENAI_REVIEW_MODEL", "gpt-5.5"),
+      reasoning: { effort: "medium" },
+      text: { verbosity: "low" },
+      input: [
+        {
+          role: "system",
+          content:
+            "You are OpenAI acting as the same electrical designer that generated the drawing. Create the design's structured symbol legend and BOQ from the final drawing. Return JSON only with keys symbol_legend and boq_items."
+        },
+        {
+          role: "user",
+          content: [
+            { type: "input_image", image_url: context.finalDesignImageUrl, detail: "high" },
+            {
+              type: "input_text",
+              text: `Project: ${context.projectName}
+Floor: ${context.floorName}
+Building purpose: ${context.buildingPurpose ?? "not specified"}
+Requirements/context: ${JSON.stringify(context.requirements)}
+
+Return strict JSON:
+{
+  "symbol_legend": [{"symbol":"FL","label":"Fluorescent Lamp","color":"#d6a744","description":"Default lighting fixture"}],
+  "boq_items": [{"category":"Lighting","item":"Fluorescent lamp fixture","specification":"230V fluorescent fitting","unit":"pcs","quantity":10,"standard":"EBCS, IEC 60598","notes":"Counted from final drawing; site verify final quantity"}]
+}
+
+Rules:
+- OpenAI generated the design, so OpenAI must generate this BOQ and symbol sheet.
+- Include at minimum MSU, DB, FL, S, P and any visible E, FA, D, EV, G symbols in symbol_legend.
+- BOQ must include fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/protection, wiring/conduit route allowances, and visible emergency/fire/data/EV/generator items where applicable.
+- If exact counts are unclear, estimate conservatively from the visible drawing and notes, and put "site verify final quantity" in notes. Do not return an empty BOQ.
+- Use Ethiopian/EBCS and IEC/EU language, mm2 copper conductors, DIN-rail protection, 220-230V single phase and 380-400V three phase where applicable.`
+            }
+          ]
+        }
+      ]
+    }),
+    signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
+  });
+
+  const text = await response.text();
+  let payload = {} as OpenAiResponsesPayload;
+  if (text) {
+    try {
+      payload = JSON.parse(text) as OpenAiResponsesPayload;
+    } catch {
+      payload = {};
+    }
+  }
+  if (!response.ok) {
+    const message = payload.error?.message ?? text;
+    throw new Error(message ? `OpenAI design package generation failed: ${response.status} - ${message}` : `OpenAI design package generation failed: ${response.status}`);
+  }
+
+  return normalizeOpenAiDesignPackage(extractJson<unknown>(responseText(payload), {}));
 }
 
 export async function improveDesignTextWithOpenAI(image: ImageResult, context: { projectName: string; floorName: string; revision: number; originalPlanImageUrl?: string | null }) {

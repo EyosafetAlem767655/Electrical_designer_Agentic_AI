@@ -5,8 +5,8 @@ import { convertPdfToPngPages, createFloorPdf, createProjectPackagePdf } from "@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
-import { createElectricalDesignWithOpenAI } from "@/lib/openai";
-import { analyzeFloorPlan, evaluateFinalDesignImageWithGrok, fallbackAnnotations, generateBoqItems, generateQuestions, normalizeAnnotations } from "@/lib/xai";
+import { createElectricalDesignWithOpenAI, generateDesignPackageWithOpenAI } from "@/lib/openai";
+import { analyzeFloorPlan, evaluateFinalDesignImageWithGrok, fallbackAnnotations, generateQuestions, improveDesignTextReadability, normalizeAnnotations } from "@/lib/xai";
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
 const MAX_JOB_ATTEMPTS = 3;
@@ -40,6 +40,14 @@ function jobErrorMessage(error: unknown) {
 function qaIssueSummary(qa?: { missing_defaults?: string[]; coverage_issues?: string[]; drawing_issues?: string[] } | null) {
   const issues = [...(qa?.missing_defaults ?? []), ...(qa?.coverage_issues ?? []), ...(qa?.drawing_issues ?? [])].filter(Boolean);
   return issues.join("; ");
+}
+
+function mergeLegendWithDefaults(legend: Design["symbol_legend"]) {
+  const bySymbol = new Map(DEFAULT_SYMBOL_LEGEND.map((item) => [item.symbol.toUpperCase(), item]));
+  for (const item of legend) {
+    bySymbol.set(item.symbol.toUpperCase(), item);
+  }
+  return Array.from(bySymbol.values());
 }
 
 export async function createTelegramImageJob(payload: Record<string, unknown>) {
@@ -424,8 +432,15 @@ async function processGenerateDesign(job: Job) {
       design_attempt: attempt
     }
   });
-  const designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
-  console.log("[jobs:generate_design] OpenAI design stage completed", { jobId: job.id, projectId, floorId, version, attempt, imagePath });
+  console.log("[jobs:generate_design] OpenAI design stage completed", { jobId: job.id, projectId, floorId, version, attempt });
+  console.log("[jobs:generate_design] Grok text edit stage started", { jobId: job.id, projectId, floorId, version, attempt });
+  const cleanedImage = await improveDesignTextReadability(image, {
+    projectName: project.project_name,
+    floorName: floor.floor_name,
+    revision: version
+  });
+  const designUrl = cleanedImage.url ? await uploadRemoteImage(imagePath, cleanedImage.url) : await uploadProjectFile(imagePath, Buffer.from(cleanedImage.b64_json!, "base64"), "image/png");
+  console.log("[jobs:generate_design] Grok text edit stage completed", { jobId: job.id, projectId, floorId, version, attempt, imagePath });
 
   await createDelayedJob(job.type, {
     projectId,
@@ -539,14 +554,14 @@ async function processDesignFinalizeStage(job: Job) {
     annotations
   };
   let boqItems: Design["boq_items"] = [];
+  let openAiLegend: Design["symbol_legend"] = [];
   let boqWarning: string | null = null;
   try {
-    console.log("[jobs:generate_design] BOQ/finalize stage started", { jobId: job.id, projectId, floorId, version });
-    boqItems = await generateBoqItems({
+    console.log("[jobs:generate_design] OpenAI BOQ/legend stage started", { jobId: job.id, projectId, floorId, version });
+    const designPackage = await generateDesignPackageWithOpenAI({
       projectName: project.project_name,
       floorName: floor.floor_name,
       buildingPurpose: project.building_purpose,
-      designPlan: typeof finalQaSummary?.correction_prompt === "string" ? finalQaSummary.correction_prompt : undefined,
       finalDesignImageUrl: designUrl,
       requirements: {
         ...boqContext,
@@ -554,16 +569,19 @@ async function processDesignFinalizeStage(job: Job) {
         final_design_image_url: designUrl
       }
     });
-    console.log("[jobs:generate_design] BOQ/finalize stage BOQ completed", { jobId: job.id, projectId, floorId, version, itemCount: boqItems.length });
+    boqItems = designPackage.boq_items;
+    openAiLegend = designPackage.symbol_legend;
+    console.log("[jobs:generate_design] OpenAI BOQ/legend stage completed", { jobId: job.id, projectId, floorId, version, itemCount: boqItems.length, legendCount: openAiLegend.length });
   } catch (boqError) {
-    boqWarning = `Grok BOQ generation failed: ${jobErrorMessage(boqError)}`;
+    boqWarning = `OpenAI BOQ/legend generation failed: ${jobErrorMessage(boqError)}`;
     boqItems = fallbackBoqFromDesign({ symbol_legend: legend });
-    console.error("BOQ generation failed after design image was created", boqError);
+    console.error("OpenAI BOQ/legend generation failed after design image was created", boqError);
   }
   if (!boqItems.length && !boqWarning) {
-    boqWarning = "Grok BOQ generation returned no items for this design.";
+    boqWarning = "OpenAI BOQ generation returned no items for this design.";
     boqItems = fallbackBoqFromDesign({ symbol_legend: legend });
   }
+  const finalLegend = mergeLegendWithDefaults(openAiLegend.length ? openAiLegend : legend);
   const revisionNotes = [qaWarning ? `Grok QA warning: ${qaWarning}` : null, boqWarning].filter(Boolean).join("\n");
 
   const designPayload: Record<string, unknown> = {
@@ -572,7 +590,7 @@ async function processDesignFinalizeStage(job: Job) {
     design_image_url: designUrl,
     design_image_path: imagePath,
     annotations,
-    symbol_legend: legend,
+    symbol_legend: finalLegend,
     boq_items: boqItems,
     revision_notes: revisionNotes || null,
     improvement_request: improvementRequest ?? null

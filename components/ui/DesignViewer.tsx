@@ -8,7 +8,7 @@ import { NeonButton } from "@/components/ui/NeonButton";
 
 export function DesignViewer({ design }: { design?: Design | null }) {
   const [zoom, setZoom] = useState(1);
-  const legend = DEFAULT_SYMBOL_LEGEND;
+  const legend = design?.symbol_legend?.length ? design.symbol_legend : DEFAULT_SYMBOL_LEGEND;
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_260px]">

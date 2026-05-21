@@ -386,10 +386,11 @@ export async function improveDesignTextReadability(image: { url?: string; b64_js
 
 The original architectural floor plan is locked. Do not alter, redraw, restyle, crop, stretch, erase, move, or reinterpret any original wall, door, window, stair, column, grid line, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
 Keep the exact same electrical design: architectural plan, walls, doors, room geometry, electrical symbols, DB location, lighting points, socket outlets, switches, wiring routes, circuit grouping, cable paths, colors, and circuit topology must stay unchanged.
-Only improve blurry, distorted, tiny, or misspelled text labels.
+Only improve blurry, distorted, tiny, cut-off, or misspelled text labels and symbol explanations.
 Rewrite labels as short professional drafting labels with crisp high-contrast CAD-style text.
-Use compact labels such as DB, FL1, FL2, S1, S2, P1, P2, E1, FA1, D1, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
-Preserve any existing compact symbol legend location if present; only sharpen or correct its symbol-to-meaning text.
+Use compact labels such as MSU, DB, FL, S, P, E, FA, D, EV1-EV5, L1-L6, P1-P6.
+If a symbol legend/symbol sheet exists, make it readable and ensure every visible symbol family has a short explanation. Keep it compact: symbol plus meaning only. Do not add BOQ quantities, cable schedules, long specifications, or paragraphs to the legend.
+If symbols are cut off, restore the symbol shape or move it slightly only enough to be fully visible without changing the design intent.
 Do not create a new sheet, side panel, blank box, large border, title block, new title block area, or empty annotation rectangles.
 Do not redraw the electrical design. Do not move, remove, simplify, or add circuits while fixing text.
 Do not add leader-arrow callouts, side callout labels, external annotation boxes, or large text panels. Keep compact labels directly beside their electrical symbols/routes inside the drawing.

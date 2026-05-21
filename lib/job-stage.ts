@@ -31,12 +31,12 @@ export function describeJobStage(job?: Pick<Job, "type" | "status" | "payload" |
     if (designAttempt && designAttempt > 1) {
       return {
         label: "OpenAI correction generation",
-        detail: [revision, `attempt ${designAttempt}`, "OpenAI applies Grok checklist corrections"].filter(Boolean).join(" - ")
+        detail: [revision, `attempt ${designAttempt}`, "OpenAI applies Grok corrections, Grok edits text"].filter(Boolean).join(" - ")
       };
     }
     return {
       label: "OpenAI design generation",
-      detail: [revision, job.type === "revision_design" ? "OpenAI revision overlay, Grok checks requirements" : "OpenAI electrical overlay, Grok checks requirements"].filter(Boolean).join(" - ")
+      detail: [revision, job.type === "revision_design" ? "OpenAI revision overlay, Grok edits text and checks requirements" : "OpenAI electrical overlay, Grok edits text and checks requirements"].filter(Boolean).join(" - ")
     };
   }
 
