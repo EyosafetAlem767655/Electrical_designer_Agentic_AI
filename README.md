@@ -7,7 +7,7 @@ Agentic electrical design dashboard and Telegram intake system for floor-by-floo
 1. Copy `.env.example` to `.env.local` and fill in real values.
 2. Rotate any credentials that were ever pasted into chat or logs before production use.
 3. Run `npm.cmd install`.
-4. Apply `supabase/migrations/001_initial_schema.sql` in Supabase SQL editor.
+4. Apply every SQL file in `supabase/migrations/` in order in the Supabase SQL editor. Existing databases created from older migrations must include `003_design_boq_items.sql`; otherwise generated designs can save without persistent BOQ export.
 5. Create a Supabase Storage bucket named `project-files`.
 6. Enable Supabase Realtime on `projects`, `floors`, and `designs`.
 7. Set `JOB_SECRET` and `CRON_SECRET` to the same strong value in production. The app triggers queued jobs when they are created, and the Hobby-compatible daily cron is only a fallback.

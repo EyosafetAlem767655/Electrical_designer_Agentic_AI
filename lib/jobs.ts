@@ -77,6 +77,18 @@ function mergeLegendWithDefaults(legend: Design["symbol_legend"]) {
   return Array.from(bySymbol.values());
 }
 
+function missingBoqColumn(error: unknown) {
+  const message =
+    error && typeof error === "object"
+      ? `${"message" in error ? String(error.message ?? "") : ""} ${"details" in error ? String(error.details ?? "") : ""} ${"hint" in error ? String(error.hint ?? "") : ""}`
+      : String(error ?? "");
+  return /boq_items|schema cache|column/i.test(message);
+}
+
+function boqMigrationWarning() {
+  return "Grok BOQ was generated, but this Supabase database is missing designs.boq_items. Apply supabase/migrations/003_design_boq_items.sql, then retry/revise this design so BOQ can be stored and exported.";
+}
+
 export async function createTelegramImageJob(payload: Record<string, unknown>) {
   try {
     return await createJob("telegram_image", payload);
@@ -581,7 +593,14 @@ async function saveGeneratedDesign(input: {
     revision_notes: input.revisionNotes ?? null,
     improvement_request: input.improvementRequest ?? null
   };
-  const { data: design, error } = await supabase.from("designs").insert(designPayload).select("*").single();
+  let { data: design, error } = await supabase.from("designs").insert(designPayload).select("*").single();
+  if (error && missingBoqColumn(error)) {
+    delete designPayload.boq_items;
+    designPayload.revision_notes = [designPayload.revision_notes, boqMigrationWarning()].filter(Boolean).join("\n");
+    const retry = await supabase.from("designs").insert(designPayload).select("*").single();
+    design = retry.data;
+    error = retry.error;
+  }
   if (error) throw error;
 
   const keep = input.existing.slice(1).map((item) => item.id);
