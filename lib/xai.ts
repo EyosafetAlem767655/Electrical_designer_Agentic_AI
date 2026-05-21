@@ -1,5 +1,6 @@
 import { DESIGN_PROMPT_RULES, ELECTRICAL_SYSTEM_PROMPT } from "@/lib/constants";
 import { getEnv, requireEnv } from "@/lib/env";
+import { reviewDesignPlanWithOpenAI } from "@/lib/openai";
 import type { BoqItem, DesignAnnotation, SymbolLegendItem } from "@/types";
 
 type ChatMessage =
@@ -8,6 +9,15 @@ type ChatMessage =
 
 type XaiChatResponse = {
   choices?: Array<{ message?: { content?: string } }>;
+};
+
+export type DesignVisualQaResult = {
+  approved: boolean;
+  score: number;
+  missing_defaults: string[];
+  coverage_issues: string[];
+  drawing_issues: string[];
+  correction_prompt: string;
 };
 
 const IMAGE_PROMPT_LIMIT = 8000;
@@ -99,6 +109,40 @@ function compactRequirements(requirements: Record<string, unknown>) {
     data_cctv_plan: compactList(analysis.data_cctv_plan),
     unclear_items: compactList(analysis.unclear_items),
     electrician_notes: compactList(analysis.electrician_notes, 10)
+  };
+}
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim()) : [];
+}
+
+function normalizeQaResult(value: unknown): DesignVisualQaResult {
+  if (!value || typeof value !== "object") {
+    return {
+      approved: false,
+      score: 0,
+      missing_defaults: ["Visual QA did not return valid JSON"],
+      coverage_issues: [],
+      drawing_issues: ["Malformed visual QA response"],
+      correction_prompt: "Rebuild the electrical overlay with complete fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/circuit labels, and readable routes in every applicable room and usable zone."
+    };
+  }
+  const record = value as Record<string, unknown>;
+  const score = typeof record.score === "number" ? record.score : typeof record.score === "string" ? Number(record.score) : 0;
+  const missingDefaults = normalizeStringArray(record.missing_defaults);
+  const coverageIssues = normalizeStringArray(record.coverage_issues);
+  const drawingIssues = normalizeStringArray(record.drawing_issues);
+  const correctionPrompt =
+    typeof record.correction_prompt === "string" && record.correction_prompt.trim()
+      ? record.correction_prompt.trim()
+      : "Correct the electrical overlay so every applicable room and usable zone has fluorescent lamp fixtures, manual switch control, 220-230V earthed socket outlets, DB/circuit labels, and electrician-readable wiring routes.";
+  return {
+    approved: record.approved === true && missingDefaults.length === 0 && coverageIssues.length === 0 && drawingIssues.length === 0,
+    score: Number.isFinite(score) ? Math.min(100, Math.max(0, score)) : 0,
+    missing_defaults: missingDefaults,
+    coverage_issues: coverageIssues,
+    drawing_issues: drawingIssues,
+    correction_prompt: correctionPrompt
   };
 }
 
@@ -278,7 +322,7 @@ function validateCountedBoqItems(items: BoqItem[]) {
   return null;
 }
 
-async function createDesignPlan(context: {
+async function createGrokDesignPlan(context: {
   projectName: string;
   floorName: string;
   buildingPurpose?: string | null;
@@ -311,6 +355,73 @@ Requirements and analysis: ${JSON.stringify(requirements)}`
     ],
     0.2
   );
+}
+
+async function reconcileDesignPlanWithGrok(context: {
+  projectName: string;
+  floorName: string;
+  buildingPurpose?: string | null;
+  requirements: Record<string, unknown>;
+  grokPlan: string;
+  openAiReview: Awaited<ReturnType<typeof reviewDesignPlanWithOpenAI>>;
+}) {
+  const requirements = compactRequirements(context.requirements);
+  return chatCompletion(
+    [
+      { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `Create the final image-generation electrical design plan by reconciling Grok's draft with OpenAI's critique. Return a compact electrician-facing plan only; do not include hidden reasoning.
+
+The final plan must preserve Ethiopian/EBCS and IEC/EU practice, fluorescent lamp fixtures by default, manual wall switches by default, and 220-230V earthed socket outlets by default unless the architect explicitly requested otherwise. LED must not be used unless requested.
+
+The final plan must be countable from the generated drawing for BOQ: every visible FL, S, P, DB/protection, emergency, fire, data/CCTV device and route family must have clear compact labels.
+
+Project: ${context.projectName}
+Floor: ${context.floorName}
+Building purpose: ${context.buildingPurpose ?? "not specified"}
+Requirements and analysis: ${JSON.stringify(requirements)}
+
+Grok draft plan:
+${limitText(context.grokPlan, 2200)}
+
+OpenAI review JSON:
+${JSON.stringify(context.openAiReview)}
+
+Final plan requirements:
+- Include all required changes and prompt additions from OpenAI.
+- Keep room-by-room or zone-by-zone coverage specific enough for drawing.
+- Explicitly mention FL fluorescent lamps, S manual switches, P 220-230V earthed socket outlets, DB/circuit labels, route labels, and BOQ-countable symbols.
+- Keep labels compact and drawable.`
+      }
+    ],
+    0.15
+  );
+}
+
+async function createCollaborativeDesignPlan(context: {
+  projectName: string;
+  floorName: string;
+  buildingPurpose?: string | null;
+  requirements: Record<string, unknown>;
+}) {
+  const requirements = compactRequirements(context.requirements);
+  const grokPlan = await createGrokDesignPlan({ ...context, requirements });
+  const openAiReview = await reviewDesignPlanWithOpenAI({
+    projectName: context.projectName,
+    floorName: context.floorName,
+    buildingPurpose: context.buildingPurpose,
+    requirements,
+    grokPlan
+  });
+  return reconcileDesignPlanWithGrok({
+    projectName: context.projectName,
+    floorName: context.floorName,
+    buildingPurpose: context.buildingPurpose,
+    requirements,
+    grokPlan,
+    openAiReview
+  });
 }
 
 function imageInputFromResult(image: { url?: string; b64_json?: string }) {
@@ -368,7 +479,7 @@ export async function generateDesignDraftImage(context: {
   requirements: Record<string, unknown>;
 }) {
   const compactedRequirements = compactRequirements(context.requirements);
-  const designPlan = await createDesignPlan({
+  const designPlan = await createCollaborativeDesignPlan({
     projectName: context.projectName,
     floorName: context.floorName,
     buildingPurpose: context.buildingPurpose,
@@ -440,6 +551,52 @@ Overlay requirements:
   }
 
   return firstPassImage;
+}
+
+export async function evaluateFinalDesignImageWithGrok(context: {
+  projectName: string;
+  floorName: string;
+  buildingPurpose?: string | null;
+  finalDesignImageUrl: string;
+  requirements: Record<string, unknown>;
+}) {
+  const requirements = compactRequirements(context.requirements);
+  const payload = await xaiFetch<XaiChatResponse>("chat/completions", {
+    model: model("XAI_VISION_MODEL", "grok-4"),
+    temperature: 0.1,
+    messages: [
+      { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: context.finalDesignImageUrl, detail: "high" } },
+          {
+            type: "text",
+            text: `QA-check this final cleaned electrical design image before engineering review and BOQ generation. Return strict JSON only with keys approved, score, missing_defaults, coverage_issues, drawing_issues, correction_prompt.
+
+Reject the design if any applicable room, corridor, stair, lobby, service room, parking/drive zone, kitchen, office, shop, wet area, exterior/balcony zone, or usable section lacks practical electrical coverage.
+
+Default requirements unless explicitly overridden:
+- fluorescent lamp fixtures, not LED
+- manual wall switches near entrances/control points
+- 220-230V earthed socket outlets in every practical room/usable area
+- DB/protection labels and clear circuit numbers
+- electrician-readable wiring routes back to DB
+- compact labels suitable for BOQ counting: FL, S, P, DB, E, FA, D
+
+Approve only when the drawing is professional, usable, and countable for BOQ. The correction_prompt must be short and directly usable as an image edit instruction if rejected.
+
+Project: ${context.projectName}
+Floor: ${context.floorName}
+Building purpose: ${context.buildingPurpose ?? "not specified"}
+Requirements and analysis: ${JSON.stringify(requirements)}`
+          }
+        ]
+      }
+    ]
+  });
+
+  return normalizeQaResult(extractJson<unknown>(firstText(payload), null));
 }
 
 export async function generateDesignImage(context: Parameters<typeof generateDesignDraftImage>[0]) {

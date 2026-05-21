@@ -5,7 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
 import { improveDesignTextWithOpenAI } from "@/lib/openai";
-import { analyzeFloorPlan, fallbackAnnotations, generateBoqItems, generateDesignDraftImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
+import { analyzeFloorPlan, evaluateFinalDesignImageWithGrok, fallbackAnnotations, generateBoqItems, generateDesignDraftImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
 const MAX_JOB_ATTEMPTS = 3;
@@ -369,44 +369,75 @@ async function processGenerateDesign(job: Job) {
     annotations
   };
 
-  const draftImage = await generateDesignDraftImage({
-    projectName: project.project_name,
-    projectCode: project.project_code ?? project.id.slice(0, 6).toUpperCase(),
-    floorName: floor.floor_name,
-    floorNumber: floor.floor_number,
-    buildingPurpose: project.building_purpose,
-    companyName: project.company_name,
-    revision: version,
-    sourceImageUrl: designEditSourceImageUrl,
-    mode: improvementRequest ? "revision" : "new",
-    requirements: {
-      ai_analysis: floor.ai_analysis,
-      architect_answers: floor.architect_answers,
-      special_requirements: project.special_requirements,
-      architectural_image_url: floor.architectural_image_url,
-      original_architectural_image_url: sourceImageUrl,
-      previous_design: latestDesign,
-      improvement_request: improvementRequest
-    }
-  });
-  const image = await improveDesignTextWithOpenAI(draftImage, {
-    projectName: project.project_name,
-    floorName: floor.floor_name,
-    revision: version,
-    originalPlanImageUrl: sourceImageUrl
-  });
-
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
-  const designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
-  let boqItems: Design["boq_items"] = [];
-  try {
-    boqItems = await generateBoqItems({
+  const baseDraftRequirements = {
+    ai_analysis: floor.ai_analysis,
+    architect_answers: floor.architect_answers,
+    special_requirements: project.special_requirements,
+    architectural_image_url: floor.architectural_image_url,
+    original_architectural_image_url: sourceImageUrl,
+    previous_design: latestDesign,
+    improvement_request: improvementRequest
+  };
+  let designUrl = "";
+  let finalQaSummary: Record<string, unknown> | null = null;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const correctionPrompt = finalQaSummary?.correction_prompt;
+    const draftImage = await generateDesignDraftImage({
+      projectName: project.project_name,
+      projectCode: project.project_code ?? project.id.slice(0, 6).toUpperCase(),
+      floorName: floor.floor_name,
+      floorNumber: floor.floor_number,
+      buildingPurpose: project.building_purpose,
+      companyName: project.company_name,
+      revision: version,
+      sourceImageUrl: attempt === 0 ? designEditSourceImageUrl : designUrl,
+      mode: attempt > 0 || improvementRequest ? "revision" : "new",
+      requirements: {
+        ...baseDraftRequirements,
+        correction_prompt: correctionPrompt,
+        design_council_attempt: attempt + 1
+      }
+    });
+    const image = await improveDesignTextWithOpenAI(draftImage, {
+      projectName: project.project_name,
+      floorName: floor.floor_name,
+      revision: version,
+      originalPlanImageUrl: sourceImageUrl
+    });
+
+    designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
+    const qa = await evaluateFinalDesignImageWithGrok({
       projectName: project.project_name,
       floorName: floor.floor_name,
       buildingPurpose: project.building_purpose,
       finalDesignImageUrl: designUrl,
       requirements: {
         ...boqContext,
+        final_design_image_url: designUrl,
+        correction_attempt: attempt
+      }
+    });
+    finalQaSummary = qa as unknown as Record<string, unknown>;
+    if (qa.approved) break;
+    if (attempt === 1) {
+      const reasons = [...qa.missing_defaults, ...qa.coverage_issues, ...qa.drawing_issues].join("; ") || "Grok visual QA rejected the final design";
+      throw new Error(`Final design visual QA failed after automatic correction: ${reasons}`);
+    }
+  }
+
+  let boqItems: Design["boq_items"] = [];
+  try {
+    boqItems = await generateBoqItems({
+      projectName: project.project_name,
+      floorName: floor.floor_name,
+      buildingPurpose: project.building_purpose,
+      designPlan: typeof finalQaSummary?.correction_prompt === "string" ? finalQaSummary.correction_prompt : undefined,
+      finalDesignImageUrl: designUrl,
+      requirements: {
+        ...boqContext,
+        final_visual_qa: finalQaSummary,
         final_design_image_url: designUrl
       }
     });

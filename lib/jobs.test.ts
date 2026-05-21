@@ -44,6 +44,7 @@ vi.mock("@/lib/storage", () => ({
 
 vi.mock("@/lib/xai", () => ({
   analyzeFloorPlan: vi.fn(),
+  evaluateFinalDesignImageWithGrok: vi.fn(),
   fallbackAnnotations: vi.fn(),
   generateBoqItems: vi.fn(),
   generateDesignDraftImage: vi.fn(),
