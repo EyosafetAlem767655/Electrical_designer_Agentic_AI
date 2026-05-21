@@ -4,8 +4,8 @@ import { convertPdfToPngPages, createFloorPdf, createProjectPackagePdf } from "@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
-import { improveDesignTextWithOpenAI } from "@/lib/openai";
-import { analyzeFloorPlan, evaluateFinalDesignImageWithGrok, fallbackAnnotations, generateBoqItems, generateDesignCorrectionDraftImage, generateDesignDraftImage, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
+import { createElectricalDesignWithOpenAI } from "@/lib/openai";
+import { analyzeFloorPlan, evaluateFinalDesignImageWithGrok, fallbackAnnotations, generateBoqItems, generateQuestions, normalizeAnnotations, normalizeLegend } from "@/lib/xai";
 import type { Design, Floor, Job, JobType, Project } from "@/types";
 
 const MAX_JOB_ATTEMPTS = 3;
@@ -370,6 +370,7 @@ async function processGenerateDesign(job: Job) {
   };
 
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
+  if (!designEditSourceImageUrl) throw new Error("Floor has no image source for OpenAI design generation");
   const baseDraftRequirements = {
     ai_analysis: floor.ai_analysis,
     architect_answers: floor.architect_answers,
@@ -385,48 +386,25 @@ async function processGenerateDesign(job: Job) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const correctionPrompt = finalQaSummary?.correction_prompt;
     const projectCode = project.project_code ?? project.id.slice(0, 6).toUpperCase();
-    console.log("[jobs:generate_design] image draft started", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1 });
-    const draftImage =
-      attempt === 0
-        ? await generateDesignDraftImage({
-            projectName: project.project_name,
-            projectCode,
-            floorName: floor.floor_name,
-            floorNumber: floor.floor_number,
-            buildingPurpose: project.building_purpose,
-            companyName: project.company_name,
-            revision: version,
-            sourceImageUrl: designEditSourceImageUrl,
-            mode: improvementRequest ? "revision" : "new",
-            requirements: {
-              ...baseDraftRequirements,
-              design_council_attempt: attempt + 1
-            }
-          })
-        : await generateDesignCorrectionDraftImage({
-            projectName: project.project_name,
-            projectCode,
-            floorName: floor.floor_name,
-            floorNumber: floor.floor_number,
-            buildingPurpose: project.building_purpose,
-            revision: version,
-            sourceImageUrl: designUrl,
-            correctionPrompt: typeof correctionPrompt === "string" ? correctionPrompt : "Correct missing default electrical devices and route labels.",
-            requirements: {
-              ...baseDraftRequirements,
-              correction_prompt: correctionPrompt,
-              design_council_attempt: attempt + 1
-            }
-          });
-    console.log("[jobs:generate_design] image draft completed", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1 });
-    console.log("[jobs:generate_design] OpenAI finishing started", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1 });
-    const image = await improveDesignTextWithOpenAI(draftImage, {
+    console.log("[jobs:generate_design] OpenAI design started", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1 });
+    const image = await createElectricalDesignWithOpenAI({
       projectName: project.project_name,
+      projectCode,
       floorName: floor.floor_name,
+      floorNumber: floor.floor_number,
+      buildingPurpose: project.building_purpose,
       revision: version,
-      originalPlanImageUrl: sourceImageUrl
+      sourceImageUrl: attempt === 0 ? designEditSourceImageUrl : designUrl,
+      originalPlanImageUrl: sourceImageUrl,
+      mode: attempt > 0 ? "correction" : improvementRequest ? "revision" : "new",
+      correctionPrompt: typeof correctionPrompt === "string" ? correctionPrompt : null,
+      requirements: {
+        ...baseDraftRequirements,
+        correction_prompt: correctionPrompt,
+        design_attempt: attempt + 1
+      }
     });
-    console.log("[jobs:generate_design] OpenAI finishing completed", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1 });
+    console.log("[jobs:generate_design] OpenAI design completed", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1 });
 
     designUrl = image.url ? await uploadRemoteImage(imagePath, image.url) : await uploadProjectFile(imagePath, Buffer.from(image.b64_json!, "base64"), "image/png");
     console.log("[jobs:generate_design] visual QA started", { jobId: job.id, projectId, floorId, version, attempt: attempt + 1 });

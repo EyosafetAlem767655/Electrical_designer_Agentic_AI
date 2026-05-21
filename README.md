@@ -17,11 +17,11 @@ Agentic electrical design dashboard and Telegram intake system for floor-by-floo
 
 Vercel environment variable names are case-sensitive. Use `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_BASE_URL` as the primary Telegram values. `INSTALLER_TELEGRAM_BOT_TOKEN`, `INSTALLER_WEBHOOK_BASE_URL`, and `ORCHESTRATOR_URL` are supported fallbacks, but the primary names are preferred.
 
-The generation pipeline uses a Grok/OpenAI design council. Grok analyzes the floor plan and drafts the Ethiopian/EBCS + IEC electrical intent, OpenAI reviews that plan through the Responses API, Grok reconciles the final drawing plan, xAI generates the electrical overlay, OpenAI finishes the drawing image, and Grok visually QA-checks the final image before BOQ counting. If QA finds missing fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/circuit labels, or unreadable routes, the job automatically attempts one corrected image pass before failing for engineering review.
+The generation pipeline keeps model collaboration simple and fast: OpenAI creates or revises the electrical design image directly on the floor plan, then Grok checks the finished image against the requirement checklist before BOQ counting. If Grok QA finds missing fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/circuit labels, or unreadable routes, the job automatically asks OpenAI for one corrected image pass before failing for engineering review.
 
 BOQ generation is counted from the final QA-approved design image. Visible lamps, switches, sockets, DB/protection items, emergency/fire/data devices, and route allowances are counted from the drawing; uncertain cable/conduit lengths should be marked for site verification rather than replaced with generic template quantities.
 
-Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. Optional OpenAI overrides are `OPENAI_REVIEW_MODEL` (default `gpt-5.5`) and `OPENAI_IMAGE_MODEL` (default `gpt-image-1.5`).
+Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. The optional OpenAI image model override is `OPENAI_IMAGE_MODEL` (default `gpt-image-1.5`).
 
 After adding or changing Vercel environment variables, redeploy the project so runtime functions receive the new values.
 

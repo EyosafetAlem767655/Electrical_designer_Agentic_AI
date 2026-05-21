@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { improveDesignTextWithOpenAI, reviewDesignPlanWithOpenAI } from "@/lib/openai";
+import { createElectricalDesignWithOpenAI, improveDesignTextWithOpenAI, reviewDesignPlanWithOpenAI } from "@/lib/openai";
 
 const originalEnv = { ...process.env };
 
@@ -9,6 +9,43 @@ afterEach(() => {
 });
 
 describe("OpenAI design finishing", () => {
+  it("creates the electrical design image directly with OpenAI for Grok QA", async () => {
+    process.env.OPENAI_API_KEY = "openai-test";
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (url === "https://example.com/plan.png") {
+          return new Response(Buffer.from("fake-plan"), { status: 200, headers: { "content-type": "image/png" } });
+        }
+        return new Response(JSON.stringify({ data: [{ b64_json: Buffer.from("design").toString("base64") }] }), { status: 200 });
+      })
+    );
+
+    const image = await createElectricalDesignWithOpenAI({
+      projectName: "Nova Heights",
+      projectCode: "NOVA123",
+      floorName: "Ground Floor",
+      floorNumber: 0,
+      buildingPurpose: "Office",
+      revision: 1,
+      sourceImageUrl: "https://example.com/plan.png",
+      requirements: { rooms: ["Office"] }
+    });
+
+    expect(image.b64_json).toBe(Buffer.from("design").toString("base64"));
+    expect(requests[1].url).toBe("https://api.openai.com/v1/images/edits");
+    const form = requests[1].init?.body as FormData;
+    expect(form.get("model")).toBe("gpt-image-1.5");
+    expect(form.get("input_fidelity")).toBe("high");
+    expect(String(form.get("prompt"))).toContain("Create a professional Ethiopian/EBCS + IEC electrical installation drawing");
+    expect(String(form.get("prompt"))).toContain("fluorescent lamp fixtures");
+    expect(String(form.get("prompt"))).toContain("manual wall switches");
+    expect(String(form.get("prompt"))).toContain("220-230V earthed socket outlets");
+    expect(String(form.get("prompt"))).toContain("BOQ-countable");
+  });
+
   it("reviews Grok design plans through the Responses API", async () => {
     process.env.OPENAI_API_KEY = "openai-test";
     process.env.OPENAI_REVIEW_MODEL = "gpt-5.5-review";

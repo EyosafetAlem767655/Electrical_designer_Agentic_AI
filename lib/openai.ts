@@ -191,6 +191,96 @@ ${context.grokPlan}`
   return normalizeDesignReview(extractJson<unknown>(responseText(payload), null));
 }
 
+export async function createElectricalDesignWithOpenAI(context: {
+  projectName: string;
+  projectCode: string;
+  floorName: string;
+  floorNumber: number;
+  buildingPurpose?: string | null;
+  revision: number;
+  sourceImageUrl: string;
+  originalPlanImageUrl?: string | null;
+  mode?: "new" | "revision" | "correction";
+  correctionPrompt?: string | null;
+  requirements: Record<string, unknown>;
+}) {
+  const modelName = openAiModel("OPENAI_IMAGE_MODEL", "gpt-image-1.5");
+  const form = new FormData();
+  form.append("model", modelName);
+  if (modelName.startsWith("gpt-image") || modelName.startsWith("chatgpt-image")) {
+    form.append("input_fidelity", "high");
+    form.append("quality", getEnv("OPENAI_IMAGE_QUALITY") ?? "high");
+  }
+  form.append("output_format", "png");
+
+  const inputs = context.originalPlanImageUrl && context.originalPlanImageUrl !== context.sourceImageUrl
+    ? [{ url: context.originalPlanImageUrl }, { url: context.sourceImageUrl }]
+    : [{ url: context.sourceImageUrl }];
+  const imageFieldName = inputs.length > 1 ? "image[]" : "image";
+  for (const [index, input] of inputs.entries()) {
+    const { blob, filename } = await imageToBlob(input);
+    form.append(imageFieldName, blob, index === 0 && inputs.length > 1 ? `locked-original-plan-${filename}` : filename);
+  }
+
+  const action =
+    context.mode === "correction"
+      ? `Correction required by Grok QA: ${context.correctionPrompt ?? "Complete missing default electrical design requirements."}`
+      : context.mode === "revision"
+        ? "Revise the existing electrical overlay according to the architect/engineer request while preserving correct existing work."
+        : "Create the electrical design overlay directly on the architectural floor plan.";
+
+  form.append(
+    "prompt",
+    `Create a professional Ethiopian/EBCS + IEC electrical installation drawing.
+
+${action}
+
+Hard requirements:
+- Preserve the architectural floor plan exactly. Do not alter, redraw, crop, stretch, erase, simplify, move, or reinterpret any wall, door, window, stair, column, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
+- Add only electrical overlay content: fluorescent lamp fixtures, manual wall switches, 220-230V earthed socket outlets, DB/protection labels, circuit numbers, wiring routes, emergency/fire/data devices where applicable, and a compact symbol legend if space exists.
+- Unless explicitly requested otherwise, every room and practical usable zone must have fluorescent lamp coverage, manual switch control near entrances/control points, and 220-230V earthed socket outlet coverage.
+- Use LED only if the architect/project requirements explicitly request LED.
+- Use Ethiopian/EBCS and IEC/EU language: 220-230V single-phase, 380-400V three-phase where needed, 50Hz, copper conductors in mm2, DIN-rail MCB/RCBO/RCCB, PVC conduit/trunking, IP-rated fittings for wet/outdoor zones.
+- Avoid US/NEC terms such as AWG, NEMA, 120V, split-phase, or receptacle.
+- Make the drawing electrician-readable and BOQ-countable. Use compact labels beside symbols/routes: DB, FL1/FL2, S1/S2, P1/P2, E1, FA1, D1, 10A MCB, 16A RCBO, 3x1.5mm2 Cu, 3x2.5mm2 Cu.
+- Do not add side panels, large note boxes, leader-arrow callouts, title-block expansions, decorative borders, or fake illegible text.
+
+Project: ${context.projectName}
+Floor: ${context.floorName}
+Drawing No: ENT-${context.projectCode}-E-${context.floorNumber}
+Revision: ${context.revision}
+Building purpose: ${context.buildingPurpose ?? "not specified"}
+Requirements and analysis: ${JSON.stringify(context.requirements)}`
+  );
+
+  const response = await fetch("https://api.openai.com/v1/images/edits", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${requireOpenAiKey()}`
+    },
+    body: form,
+    signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
+  });
+
+  const text = await response.text();
+  let payload = {} as OpenAiImageResponse;
+  if (text) {
+    try {
+      payload = JSON.parse(text) as OpenAiImageResponse;
+    } catch {
+      payload = {};
+    }
+  }
+  if (!response.ok) {
+    const message = payload.error?.message ?? text;
+    throw new Error(message ? `OpenAI electrical design image failed: ${response.status} - ${message}` : `OpenAI electrical design image failed: ${response.status}`);
+  }
+
+  const image = payload.data?.[0];
+  if (!image?.url && !image?.b64_json) throw new Error("OpenAI electrical design image returned no image");
+  return image;
+}
+
 export async function improveDesignTextWithOpenAI(image: ImageResult, context: { projectName: string; floorName: string; revision: number; originalPlanImageUrl?: string | null }) {
   const modelName = openAiModel("OPENAI_IMAGE_MODEL", "gpt-image-1.5");
   const form = new FormData();

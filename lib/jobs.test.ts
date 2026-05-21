@@ -54,6 +54,7 @@ vi.mock("@/lib/xai", () => ({
 }));
 
 vi.mock("@/lib/openai", () => ({
+  createElectricalDesignWithOpenAI: vi.fn(),
   improveDesignTextWithOpenAI: vi.fn()
 }));
 
