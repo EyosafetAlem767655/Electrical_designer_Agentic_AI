@@ -30,13 +30,13 @@ export function describeJobStage(job?: Pick<Job, "type" | "status" | "payload" |
     }
     if (designAttempt && designAttempt > 1) {
       return {
-        label: "Grok correction + OpenAI readability",
-        detail: [revision, `attempt ${designAttempt}`, "Grok edits design, OpenAI checks text"].filter(Boolean).join(" - ")
+        label: "OpenAI correction generation",
+        detail: [revision, `attempt ${designAttempt}`, "OpenAI applies Grok checklist corrections"].filter(Boolean).join(" - ")
       };
     }
     return {
-      label: "Grok design + OpenAI readability",
-      detail: [revision, job.type === "revision_design" ? "Grok revision overlay, OpenAI text check" : "Grok electrical overlay, OpenAI text check"].filter(Boolean).join(" - ")
+      label: "OpenAI design generation",
+      detail: [revision, job.type === "revision_design" ? "OpenAI revision overlay, Grok checks requirements" : "OpenAI electrical overlay, Grok checks requirements"].filter(Boolean).join(" - ")
     };
   }
 
