@@ -210,7 +210,7 @@ Context: ${JSON.stringify(context)}`
     fire_alarm_plan: [],
     data_cctv_plan: [],
     unclear_items: [],
-    questions: ["Please confirm the room purposes and any special equipment for this floor."],
+    questions: ["Please confirm the room purposes and any special equipment for this floor,."],
     annotations: [],
     symbol_legend: [],
     electrician_notes: []
