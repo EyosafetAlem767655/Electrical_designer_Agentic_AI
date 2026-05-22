@@ -172,6 +172,28 @@ describe("OpenAI design finishing", () => {
     expect(form.get("model")).toBe("gpt-image-2");
   });
 
+  it("retries transient OpenAI 502 responses and strips HTML from final errors", async () => {
+    process.env.OPENAI_API_KEY = "openai-test";
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        return new Response("<html><title>api.openai.com | 502: Bad gateway</title><body>Bad gateway<script>noise</script></body></html>", { status: 502 });
+      })
+    );
+
+    await expect(
+      evaluateDesignImageWithOpenAI({
+        projectName: "Nova Heights",
+        floorName: "Basement",
+        finalDesignImageUrl: "https://example.com/design.png",
+        requirements: {}
+      })
+    ).rejects.toThrow(/502 - api\.openai\.com \| 502: Bad gateway Bad gateway/);
+    expect(calls).toBe(3);
+  });
+
   it("QA-checks OpenAI designs through the Responses API with structured JSON", async () => {
     process.env.OPENAI_API_KEY = "openai-test";
     process.env.OPENAI_REVIEW_MODEL = "gpt-5.5-qa";

@@ -42,6 +42,7 @@ export type OpenAiDesignPackage = {
 };
 
 const OPENAI_TIMEOUT_MS = 240_000;
+const OPENAI_RETRY_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504]);
 
 function openAiModel(name: string, fallback: string) {
   return getEnv(name) ?? fallback;
@@ -58,6 +59,58 @@ function requireOpenAiKey() {
   const key = getEnv("OPENAI_API_KEY") ?? getEnv("OPEN_AI_KEY");
   if (!key) throw new Error("Missing required environment variable: OPENAI_API_KEY or OPEN_AI_KEY");
   return key;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function compactErrorText(text: string) {
+  const withoutHtml = text
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return withoutHtml.slice(0, 260);
+}
+
+function openAiErrorMessage(status: number, payload: { error?: { message?: string } }, text: string) {
+  const message = payload.error?.message?.trim() || compactErrorText(text);
+  return message ? `${status} - ${message}` : String(status);
+}
+
+async function openAiFetchWithRetry(url: string, init: RequestInit, label: string) {
+  let lastText = "";
+  let lastStatus = 0;
+  let lastPayload = {} as { error?: { message?: string } };
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(url, {
+      ...init,
+      signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
+    });
+    const text = await response.text();
+    let payload = {} as { error?: { message?: string } };
+    if (text) {
+      try {
+        payload = JSON.parse(text) as { error?: { message?: string } };
+      } catch {
+        payload = {};
+      }
+    }
+
+    if (response.ok || !OPENAI_RETRY_STATUSES.has(response.status) || attempt === 2) {
+      return { response, text, payload };
+    }
+
+    lastText = text;
+    lastStatus = response.status;
+    lastPayload = payload;
+    await sleep(750 * (attempt + 1));
+  }
+
+  throw new Error(`${label} failed: ${openAiErrorMessage(lastStatus, lastPayload, lastText)}`);
 }
 
 function dataUrlToBuffer(dataUrl: string) {
@@ -242,7 +295,7 @@ export async function evaluateDesignImageWithOpenAI(context: {
   finalDesignImageUrl: string;
   requirements: Record<string, unknown>;
 }) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const { response, text, payload } = await openAiFetchWithRetry("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${requireOpenAiKey()}`,
@@ -306,25 +359,13 @@ If rejected, correction_prompt must be a concise instruction for the OpenAI corr
           ]
         }
       ]
-    }),
-    signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
-  });
-
-  const text = await response.text();
-  let payload = {} as OpenAiResponsesPayload;
-  if (text) {
-    try {
-      payload = JSON.parse(text) as OpenAiResponsesPayload;
-    } catch {
-      payload = {};
-    }
-  }
+    })
+  }, "OpenAI design QA");
   if (!response.ok) {
-    const message = payload.error?.message ?? text;
-    throw new Error(message ? `OpenAI design QA failed: ${response.status} - ${message}` : `OpenAI design QA failed: ${response.status}`);
+    throw new Error(`OpenAI design QA failed: ${openAiErrorMessage(response.status, payload, text)}`);
   }
 
-  return normalizeDesignQa(extractJson<unknown>(responseText(payload), null));
+  return normalizeDesignQa(extractJson<unknown>(responseText(payload as OpenAiResponsesPayload), null));
 }
 
 export async function reviewDesignPlanWithOpenAI(context: {
@@ -334,7 +375,7 @@ export async function reviewDesignPlanWithOpenAI(context: {
   requirements: Record<string, unknown>;
   grokPlan: string;
 }) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const { response, text, payload } = await openAiFetchWithRetry("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${requireOpenAiKey()}`,
@@ -372,25 +413,13 @@ Grok draft plan:
 ${context.grokPlan}`
         }
       ]
-    }),
-    signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
-  });
-
-  const text = await response.text();
-  let payload = {} as OpenAiResponsesPayload;
-  if (text) {
-    try {
-      payload = JSON.parse(text) as OpenAiResponsesPayload;
-    } catch {
-      payload = {};
-    }
-  }
+    })
+  }, "OpenAI design review");
   if (!response.ok) {
-    const message = payload.error?.message ?? text;
-    throw new Error(message ? `OpenAI design review failed: ${response.status} - ${message}` : `OpenAI design review failed: ${response.status}`);
+    throw new Error(`OpenAI design review failed: ${openAiErrorMessage(response.status, payload, text)}`);
   }
 
-  return normalizeDesignReview(extractJson<unknown>(responseText(payload), null));
+  return normalizeDesignReview(extractJson<unknown>(responseText(payload as OpenAiResponsesPayload), null));
 }
 
 export async function createElectricalDesignWithOpenAI(context: {
@@ -464,30 +493,18 @@ Building purpose: ${context.buildingPurpose ?? "not specified"}
 Requirements and analysis: ${JSON.stringify(context.requirements)}`
   );
 
-  const response = await fetch("https://api.openai.com/v1/images/edits", {
+  const { response, text, payload } = await openAiFetchWithRetry("https://api.openai.com/v1/images/edits", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${requireOpenAiKey()}`
     },
-    body: form,
-    signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
-  });
-
-  const text = await response.text();
-  let payload = {} as OpenAiImageResponse;
-  if (text) {
-    try {
-      payload = JSON.parse(text) as OpenAiImageResponse;
-    } catch {
-      payload = {};
-    }
-  }
+    body: form
+  }, "OpenAI electrical design image");
   if (!response.ok) {
-    const message = payload.error?.message ?? text;
-    throw new Error(message ? `OpenAI electrical design image failed: ${response.status} - ${message}` : `OpenAI electrical design image failed: ${response.status}`);
+    throw new Error(`OpenAI electrical design image failed: ${openAiErrorMessage(response.status, payload, text)}`);
   }
 
-  const image = payload.data?.[0];
+  const image = (payload as OpenAiImageResponse).data?.[0];
   if (!image?.url && !image?.b64_json) throw new Error("OpenAI electrical design image returned no image");
   return image;
 }
@@ -499,7 +516,7 @@ export async function generateDesignPackageWithOpenAI(context: {
   finalDesignImageUrl: string;
   requirements: Record<string, unknown>;
 }) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const { response, text, payload } = await openAiFetchWithRetry("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${requireOpenAiKey()}`,
@@ -542,25 +559,13 @@ Rules:
           ]
         }
       ]
-    }),
-    signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
-  });
-
-  const text = await response.text();
-  let payload = {} as OpenAiResponsesPayload;
-  if (text) {
-    try {
-      payload = JSON.parse(text) as OpenAiResponsesPayload;
-    } catch {
-      payload = {};
-    }
-  }
+    })
+  }, "OpenAI design package generation");
   if (!response.ok) {
-    const message = payload.error?.message ?? text;
-    throw new Error(message ? `OpenAI design package generation failed: ${response.status} - ${message}` : `OpenAI design package generation failed: ${response.status}`);
+    throw new Error(`OpenAI design package generation failed: ${openAiErrorMessage(response.status, payload, text)}`);
   }
 
-  return normalizeOpenAiDesignPackage(extractJson<unknown>(responseText(payload), {}));
+  return normalizeOpenAiDesignPackage(extractJson<unknown>(responseText(payload as OpenAiResponsesPayload), {}));
 }
 
 export async function improveDesignTextWithOpenAI(image: ImageResult, context: { projectName: string; floorName: string; revision: number; originalPlanImageUrl?: string | null; designerName?: string }) {
@@ -599,30 +604,18 @@ Floor: ${context.floorName}
 Revision: ${context.revision}`
   );
 
-  const response = await fetch("https://api.openai.com/v1/images/edits", {
+  const { response, text, payload } = await openAiFetchWithRetry("https://api.openai.com/v1/images/edits", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${requireOpenAiKey()}`
     },
-    body: form,
-    signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
-  });
-
-  const text = await response.text();
-  let payload = {} as OpenAiImageResponse;
-  if (text) {
-    try {
-      payload = JSON.parse(text) as OpenAiImageResponse;
-    } catch {
-      payload = {};
-    }
-  }
+    body: form
+  }, "OpenAI image edit");
   if (!response.ok) {
-    const message = payload.error?.message ?? text;
-    throw new Error(message ? `OpenAI image edit failed: ${response.status} - ${message}` : `OpenAI image edit failed: ${response.status}`);
+    throw new Error(`OpenAI image edit failed: ${openAiErrorMessage(response.status, payload, text)}`);
   }
 
-  const edited = payload.data?.[0];
+  const edited = (payload as OpenAiImageResponse).data?.[0];
   if (!edited?.url && !edited?.b64_json) throw new Error("OpenAI image edit returned no image");
   return edited;
 }
