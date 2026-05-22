@@ -37,7 +37,7 @@ describe("OpenAI design finishing", () => {
     expect(image.b64_json).toBe(Buffer.from("design").toString("base64"));
     expect(requests[1].url).toBe("https://api.openai.com/v1/images/edits");
     const form = requests[1].init?.body as FormData;
-    expect(form.get("model")).toBe("gpt-5.5");
+    expect(form.get("model")).toBe("gpt-image-1.5");
     expect(String(form.get("prompt"))).toContain("Create a professional Ethiopian/EBCS + IEC electrical installation drawing");
     expect(String(form.get("prompt"))).toContain("fluorescent lamp fixtures");
     expect(String(form.get("prompt"))).toContain("manual wall switches");
@@ -112,6 +112,64 @@ describe("OpenAI design finishing", () => {
     expect(review.approved).toBe(false);
     expect(review.required_changes[0]).toMatch(/valid JSON/i);
     expect(review.prompt_additions.join(" ")).toContain("fluorescent lamp fixtures");
+  });
+
+  it("falls back to an image-capable model when OPENAI_IMAGE_MODEL is set to gpt-5.5", async () => {
+    process.env.OPENAI_API_KEY = "openai-test";
+    process.env.OPENAI_IMAGE_MODEL = "gpt-5.5";
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (url === "https://example.com/plan.png") {
+          return new Response(Buffer.from("fake-plan"), { status: 200, headers: { "content-type": "image/png" } });
+        }
+        return new Response(JSON.stringify({ data: [{ b64_json: Buffer.from("design").toString("base64") }] }), { status: 200 });
+      })
+    );
+
+    await createElectricalDesignWithOpenAI({
+      projectName: "Nova Heights",
+      projectCode: "NOVA123",
+      floorName: "Ground Floor",
+      floorNumber: 0,
+      revision: 1,
+      sourceImageUrl: "https://example.com/plan.png",
+      requirements: {}
+    });
+
+    const form = requests[1].init?.body as FormData;
+    expect(form.get("model")).toBe("gpt-image-1.5");
+  });
+
+  it("passes through gpt-image-2 when explicitly configured", async () => {
+    process.env.OPENAI_API_KEY = "openai-test";
+    process.env.OPENAI_IMAGE_MODEL = "gpt-image-2";
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (url === "https://example.com/plan.png") {
+          return new Response(Buffer.from("fake-plan"), { status: 200, headers: { "content-type": "image/png" } });
+        }
+        return new Response(JSON.stringify({ data: [{ b64_json: Buffer.from("design").toString("base64") }] }), { status: 200 });
+      })
+    );
+
+    await createElectricalDesignWithOpenAI({
+      projectName: "Nova Heights",
+      projectCode: "NOVA123",
+      floorName: "Ground Floor",
+      floorNumber: 0,
+      revision: 1,
+      sourceImageUrl: "https://example.com/plan.png",
+      requirements: {}
+    });
+
+    const form = requests[1].init?.body as FormData;
+    expect(form.get("model")).toBe("gpt-image-2");
   });
 
   it("QA-checks OpenAI designs through the Responses API with structured JSON", async () => {
@@ -214,7 +272,7 @@ describe("OpenAI design finishing", () => {
     expect(image.b64_json).toBe(Buffer.from("final").toString("base64"));
     expect(requests[2].url).toBe("https://api.openai.com/v1/images/edits");
     const form = requests[2].init?.body as FormData;
-    expect(form.get("model")).toBe("gpt-5.5");
+    expect(form.get("model")).toBe("gpt-image-1.5");
     expect(form.getAll("image[]")).toHaveLength(2);
     expect(String(form.get("prompt"))).toContain("Professional electrical drafting readability and symbol check pass");
     expect(String(form.get("prompt"))).toContain("the first image is the locked original architectural floor plan");

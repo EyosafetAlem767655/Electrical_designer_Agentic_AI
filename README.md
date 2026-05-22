@@ -21,7 +21,7 @@ The generation pipeline uses OpenAI GPT-5.5 for the electrical design image, str
 
 BOQ generation is counted by OpenAI from the generated design image. Visible lamps, switches, sockets, DB/protection items, emergency/fire/data devices, and route allowances are counted from the drawing; uncertain cable/conduit lengths should be marked for site verification rather than replaced with generic template quantities.
 
-Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. Optional OpenAI overrides are `OPENAI_IMAGE_MODEL` (default `gpt-5.5`) for design/readability edits and `OPENAI_REVIEW_MODEL` (default `gpt-5.5`) for BOQ and QA.
+Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. Optional OpenAI overrides are `OPENAI_IMAGE_MODEL` (default `gpt-image-1.5`) for design/readability image edits and `OPENAI_REVIEW_MODEL` (default `gpt-5.5`) for BOQ and QA. If your OpenAI account supports a newer image model such as `gpt-image-2`, set `OPENAI_IMAGE_MODEL=gpt-image-2` in Vercel; the app will pass through valid `gpt-image*`, `chatgpt-image*`, and `dall-e*` image model names. If `OPENAI_IMAGE_MODEL` is accidentally set to a non-image model such as `gpt-5.5`, the app falls back to `gpt-image-1.5`.
 
 After adding or changing Vercel environment variables, redeploy the project so runtime functions receive the new values.
 

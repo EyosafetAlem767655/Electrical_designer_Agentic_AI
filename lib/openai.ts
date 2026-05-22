@@ -47,6 +47,13 @@ function openAiModel(name: string, fallback: string) {
   return getEnv(name) ?? fallback;
 }
 
+function openAiImageModel() {
+  const configured = getEnv("OPENAI_IMAGE_MODEL")?.trim();
+  if (!configured) return "gpt-image-1.5";
+  if (/^(?:gpt-image|chatgpt-image|dall-e)/i.test(configured)) return configured;
+  return "gpt-image-1.5";
+}
+
 function requireOpenAiKey() {
   const key = getEnv("OPENAI_API_KEY") ?? getEnv("OPEN_AI_KEY");
   if (!key) throw new Error("Missing required environment variable: OPENAI_API_KEY or OPEN_AI_KEY");
@@ -399,7 +406,7 @@ export async function createElectricalDesignWithOpenAI(context: {
   correctionPrompt?: string | null;
   requirements: Record<string, unknown>;
 }) {
-  const modelName = openAiModel("OPENAI_IMAGE_MODEL", "gpt-5.5");
+  const modelName = openAiImageModel();
   const form = new FormData();
   form.append("model", modelName);
   if (modelName.startsWith("gpt-image") || modelName.startsWith("chatgpt-image")) {
@@ -557,7 +564,7 @@ Rules:
 }
 
 export async function improveDesignTextWithOpenAI(image: ImageResult, context: { projectName: string; floorName: string; revision: number; originalPlanImageUrl?: string | null; designerName?: string }) {
-  const modelName = openAiModel("OPENAI_IMAGE_MODEL", "gpt-5.5");
+  const modelName = openAiImageModel();
   const form = new FormData();
   form.append("model", modelName);
   if (modelName.startsWith("gpt-image") || modelName.startsWith("chatgpt-image")) {
