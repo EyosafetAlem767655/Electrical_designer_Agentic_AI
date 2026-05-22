@@ -2,6 +2,8 @@
 
 Agentic electrical design dashboard and Telegram intake system for floor-by-floor building electrical installation design.
 
+Deployment marker: OpenAI critique correction pipeline is active.
+
 ## Local Setup
 
 1. Copy `.env.example` to `.env.local` and fill in real values.
