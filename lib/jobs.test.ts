@@ -117,7 +117,7 @@ describe("job enqueue helpers", () => {
     ).toBe("https://example.com/design-v1.png");
   });
 
-  it("keeps the active generate_design pipeline owned by Grok, with OpenAI only checking", () => {
+  it("keeps the first-pass generate_design pipeline owned by Grok, then queues OpenAI QA", () => {
     const source = readFileSync(join(process.cwd(), "lib", "jobs.ts"), "utf8");
     const pipeline = source.slice(source.indexOf("async function processGenerateDesign"));
 
@@ -126,8 +126,10 @@ describe("job enqueue helpers", () => {
     expect(pipeline.indexOf("improveDesignTextWithOpenAI")).toBeGreaterThan(pipeline.indexOf("generateDesignDraftImage"));
     expect(pipeline.indexOf("generateBoqItems")).toBeGreaterThan(pipeline.indexOf("improveDesignTextWithOpenAI"));
     expect(pipeline.indexOf('phase: "openai_qa"')).toBeGreaterThan(pipeline.indexOf("generateBoqItems"));
-    expect(source).not.toContain("createElectricalDesignWithOpenAI");
-    expect(source).not.toContain("generateDesignPackageWithOpenAI");
+    expect(source).toContain("async function processOpenAiFixStage");
+    expect(source).toContain("createElectricalDesignWithOpenAI");
+    expect(source).toContain("generateDesignPackageWithOpenAI");
+    expect(source).toContain('phase: "openai_fix"');
   });
 
   it("labels design stages by actual Grok/OpenAI responsibility", () => {
@@ -157,8 +159,8 @@ describe("job enqueue helpers", () => {
         status: "processing",
         attempts: 1,
         error: null,
-        payload: { phase: "grok_fix", designAttempt: 2 }
+        payload: { phase: "openai_fix", designAttempt: 2 }
       })?.label
-    ).toBe("Grok correction from OpenAI feedback");
+    ).toBe("OpenAI critique correction");
   });
 });

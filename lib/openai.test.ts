@@ -223,7 +223,7 @@ describe("OpenAI design finishing", () => {
     expect(String(form.get("prompt"))).toContain("Preserve the original architectural floor plan exactly");
     expect(String(form.get("prompt"))).toContain("Do not alter, redraw, restyle, crop");
     expect(String(form.get("prompt"))).toContain("Improve readability only");
-    expect(String(form.get("prompt"))).toContain("Grok is the designer");
+    expect(String(form.get("prompt"))).toContain("Grok/OpenAI is the design owner");
     expect(String(form.get("prompt"))).toContain("Do not create or keep an AI-drawn legend");
     expect(String(form.get("prompt"))).toContain("Ensure symbols remain standard and explainable by the dashboard legend");
     expect(String(form.get("prompt"))).toContain("verify readability and symbol clarity only");

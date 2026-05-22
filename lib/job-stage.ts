@@ -28,10 +28,10 @@ export function describeJobStage(job?: Pick<Job, "type" | "status" | "payload" |
         detail: [revision, "cleaning blurry labels and cut symbols"].filter(Boolean).join(" - ")
       };
     }
-    if (phase === "grok_fix" || (designAttempt && designAttempt > 1)) {
+    if (phase === "openai_fix" || phase === "grok_fix" || (designAttempt && designAttempt > 1)) {
       return {
-        label: "Grok correction from OpenAI feedback",
-        detail: [revision, designAttempt ? `attempt ${designAttempt}` : null, "fixing design and regenerating BOQ"].filter(Boolean).join(" - ")
+        label: "OpenAI critique correction",
+        detail: [revision, designAttempt ? `attempt ${designAttempt}` : null, "fixing design accuracy and updating BOQ"].filter(Boolean).join(" - ")
       };
     }
     if (phase === "final_save") {
