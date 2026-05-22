@@ -204,7 +204,7 @@ function normalizeDesignQa(value: unknown): OpenAiDesignQaResult {
       requirement_issues: [],
       boq_issues: ["Malformed OpenAI QA response"],
       correction_prompt:
-        "Grok must correct the electrical design and BOQ: make all text crisp, restore any cut symbols, ensure every symbol is explained by the structured legend, include fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/MSU labels, clear routes, and regenerate a counted BOQ."
+        "OpenAI must correct the electrical design and BOQ: make all text crisp, restore any cut symbols, ensure every symbol is explained by the structured legend, include fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/MSU labels, clear routes, and regenerate a counted BOQ."
     };
   }
   const record = value as Record<string, unknown>;
@@ -216,7 +216,7 @@ function normalizeDesignQa(value: unknown): OpenAiDesignQaResult {
   const correctionPrompt =
     typeof record.correction_prompt === "string" && record.correction_prompt.trim()
       ? record.correction_prompt.trim()
-      : "Grok must correct the electrical design and BOQ: repair unreadable text/symbols, explain every visible symbol in the structured legend, include all mandatory FL/S/P defaults, DB/MSU, readable routes, and regenerate counted BOQ.";
+      : "OpenAI must correct the electrical design and BOQ: repair unreadable text/symbols, explain every visible symbol in the structured legend, include all mandatory FL/S/P defaults, DB/MSU, readable routes, and regenerate counted BOQ.";
   return {
     approved: record.approved === true && readabilityIssues.length === 0 && symbolIssues.length === 0 && requirementIssues.length === 0 && boqIssues.length === 0,
     score: Number.isFinite(score) ? Math.min(100, Math.max(0, score)) : 0,
@@ -278,7 +278,7 @@ export async function evaluateDesignImageWithOpenAI(context: {
             { type: "input_image", image_url: context.finalDesignImageUrl, detail: "high" },
             {
               type: "input_text",
-              text: `QA-check this Grok-generated Ethiopian/EBCS + IEC electrical design image and the stored legend/BOQ. Do not redesign in this JSON response; if rejected, write correction_prompt for the OpenAI correction image pass. Return JSON only.
+              text: `QA-check this OpenAI GPT-5.5-generated Ethiopian/EBCS + IEC electrical design image and the stored legend/BOQ. Do not redesign in this JSON response; if rejected, write correction_prompt for the next OpenAI correction image pass. Return JSON only.
 
 Project: ${context.projectName}
 Floor: ${context.floorName}
@@ -291,7 +291,7 @@ Check these non-negotiable items:
 - Defaults: fluorescent lamps, manual switches, and 220-230V earthed socket outlets must be present where practical on every floor and usable room/zone unless explicitly overridden.
 - Source/distribution: main supply unit/source from transformer or utility incomer must be marked as MSU/MSU? and DB/circuit routes must be understandable.
 - Professionalism/design accuracy: drawing must be practical, electrician-readable, visually clean, dimensionally respectful of the base plan, and accurate to the user's stated requirements and floor use.
-- BOQ: BOQ must exist, must be generated from the visible Grok design, must include counted lamps, switches, sockets, DB/protection, routes/conduit/cable allowances, and applicable emergency/fire/data/EV/generator devices.
+- BOQ: BOQ must exist, must be generated from the visible OpenAI design, must include counted lamps, switches, sockets, DB/protection, routes/conduit/cable allowances, and applicable emergency/fire/data/EV/generator devices.
 - Legend/symbol sheet should be the structured dashboard/PDF legend, not blurry AI text inside the image.
 
 If rejected, correction_prompt must be a concise instruction for the OpenAI correction pass, including both drawing fixes and BOQ updates.`
@@ -399,7 +399,7 @@ export async function createElectricalDesignWithOpenAI(context: {
   correctionPrompt?: string | null;
   requirements: Record<string, unknown>;
 }) {
-  const modelName = openAiModel("OPENAI_IMAGE_MODEL", "gpt-image-1.5");
+  const modelName = openAiModel("OPENAI_IMAGE_MODEL", "gpt-5.5");
   const form = new FormData();
   form.append("model", modelName);
   if (modelName.startsWith("gpt-image") || modelName.startsWith("chatgpt-image")) {
@@ -526,7 +526,7 @@ Return strict JSON:
 }
 
 Rules:
-- If OpenAI corrected the design, update the BOQ and symbol sheet to match the corrected drawing. If Grok generated the drawing, critique it and still count only what is visible in the final drawing.
+- OpenAI generated or corrected the design, so OpenAI must generate the BOQ and symbol sheet from the visible final drawing.
 - Include at minimum MSU, DB, FL, S, P and any visible E, FA, D, EV, G symbols in symbol_legend.
 - BOQ must include fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/protection, wiring/conduit route allowances, and visible emergency/fire/data/EV/generator items where applicable.
 - If exact counts are unclear, estimate conservatively from the visible drawing and notes, and put "site verify final quantity" in notes. Do not return an empty BOQ.
@@ -557,7 +557,7 @@ Rules:
 }
 
 export async function improveDesignTextWithOpenAI(image: ImageResult, context: { projectName: string; floorName: string; revision: number; originalPlanImageUrl?: string | null; designerName?: string }) {
-  const modelName = openAiModel("OPENAI_IMAGE_MODEL", "gpt-image-1.5");
+  const modelName = openAiModel("OPENAI_IMAGE_MODEL", "gpt-5.5");
   const form = new FormData();
   form.append("model", modelName);
   if (modelName.startsWith("gpt-image") || modelName.startsWith("chatgpt-image")) {
@@ -580,7 +580,7 @@ Hard constraints:
 - Preserve the original architectural floor plan exactly. Do not alter, redraw, restyle, crop, stretch, erase, move, or reinterpret any original wall, door, window, stair, column, grid line, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
 - Do not fade, white out, clean up, redraw, simplify, crop, or remove original architectural linework, labels, grid bubbles, parking bay markings, ramp/stair graphics, room names, or boundary lines. If the draft overlay conflicts with the locked original plan, the locked original plan wins.
 - Improve readability only: sharpen overlay line weights, align routes if already present, clean symbol placement, improve contrast, and standardize short IDs.
-- Do not redesign the electrical system in this readability pass. ${context.designerName ?? "Grok/OpenAI"} is the design owner for this image. Do not add new devices/routes except to restore a clearly corrupted or unreadable symbol from the draft.
+- Do not redesign the electrical system in this readability pass. ${context.designerName ?? "OpenAI GPT-5.5"} is the design owner for this image. Do not add new devices/routes except to restore a clearly corrupted or unreadable symbol from the draft.
 - Ensure symbols remain standard and explainable by the dashboard legend: MSU, DB, FL, S, P, E, FA, D, EV, G.
 - Do not create or keep an AI-drawn legend, title block, BOQ table, schedule, side panel, large note box, leader-arrow callout, title-block expansion, external annotation area, decorative layout, or paragraph text. If the draft contains messy generated legend/title text, remove that generated text while preserving the plan and electrical overlay.
 - Use only short readable CAD IDs where unavoidable: MSU, DB, FL, S, P, E, FA, D, EV1-EV5, L1-L6, P1-P6. Do not write long equipment names, cable specifications, standards, lux values, or BOQ quantities inside the image.

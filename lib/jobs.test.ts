@@ -46,18 +46,15 @@ vi.mock("@/lib/storage", () => ({
 
 vi.mock("@/lib/xai", () => ({
   analyzeFloorPlan: vi.fn(),
-  evaluateFinalDesignImageWithGrok: vi.fn(),
   fallbackAnnotations: vi.fn(),
-  generateBoqItems: vi.fn(),
-  generateDesignDraftImage: vi.fn(),
   generateQuestions: vi.fn(),
-  normalizeAnnotations: vi.fn(),
-  normalizeLegend: vi.fn()
+  normalizeAnnotations: vi.fn()
 }));
 
 vi.mock("@/lib/openai", () => ({
   createElectricalDesignWithOpenAI: vi.fn(),
   evaluateDesignImageWithOpenAI: vi.fn(),
+  generateDesignPackageWithOpenAI: vi.fn(),
   improveDesignTextWithOpenAI: vi.fn()
 }));
 
@@ -117,31 +114,33 @@ describe("job enqueue helpers", () => {
     ).toBe("https://example.com/design-v1.png");
   });
 
-  it("keeps the first-pass generate_design pipeline owned by Grok, then queues OpenAI QA", () => {
+  it("keeps the generate_design pipeline owned by OpenAI for design, BOQ, and QA", () => {
     const source = readFileSync(join(process.cwd(), "lib", "jobs.ts"), "utf8");
     const pipeline = source.slice(source.indexOf("async function processGenerateDesign"));
 
-    expect(source).toContain('const phase = typeof job.payload.phase === "string" ? job.payload.phase : "grok_design"');
-    expect(pipeline.indexOf("generateDesignDraftImage")).toBeGreaterThan(-1);
-    expect(pipeline.indexOf("improveDesignTextWithOpenAI")).toBeGreaterThan(pipeline.indexOf("generateDesignDraftImage"));
-    expect(pipeline.indexOf("generateBoqItems")).toBeGreaterThan(pipeline.indexOf("improveDesignTextWithOpenAI"));
-    expect(pipeline.indexOf('phase: "openai_qa"')).toBeGreaterThan(pipeline.indexOf("generateBoqItems"));
-    expect(source).toContain("async function processOpenAiFixStage");
+    expect(source).toContain('const phase = typeof job.payload.phase === "string" ? job.payload.phase : "openai_design"');
     expect(source).toContain("createElectricalDesignWithOpenAI");
     expect(source).toContain("generateDesignPackageWithOpenAI");
-    expect(source).toContain('phase: "openai_fix"');
+    expect(pipeline.indexOf("createElectricalDesignWithOpenAI")).toBeGreaterThan(-1);
+    expect(pipeline.indexOf("improveDesignTextWithOpenAI")).toBeGreaterThan(pipeline.indexOf("createElectricalDesignWithOpenAI"));
+    expect(pipeline.indexOf("generateDesignPackageWithOpenAI")).toBeGreaterThan(pipeline.indexOf("improveDesignTextWithOpenAI"));
+    expect(pipeline.indexOf('phase: "openai_qa"')).toBeGreaterThan(pipeline.indexOf("generateDesignPackageWithOpenAI"));
+    expect(source).not.toContain("generateDesignDraftImage");
+    expect(source).not.toContain("generateDesignCorrectionDraftImage");
+    expect(source).not.toContain("generateBoqItems");
+    expect(source).not.toContain("async function processOpenAiFixStage");
   });
 
-  it("labels design stages by actual Grok/OpenAI responsibility", () => {
+  it("labels design stages by OpenAI responsibility", () => {
     expect(
       describeJobStage({
         type: "generate_design",
         status: "processing",
         attempts: 1,
         error: null,
-        payload: { phase: "grok_design", version: 1 }
+        payload: { phase: "openai_design", version: 1 }
       })?.label
-    ).toBe("Grok design + BOQ");
+    ).toBe("OpenAI GPT-5.5 design + BOQ");
 
     expect(
       describeJobStage({
@@ -159,8 +158,8 @@ describe("job enqueue helpers", () => {
         status: "processing",
         attempts: 1,
         error: null,
-        payload: { phase: "openai_fix", designAttempt: 2 }
+        payload: { phase: "openai_design", designAttempt: 2 }
       })?.label
-    ).toBe("OpenAI critique correction");
+    ).toBe("OpenAI design correction");
   });
 });

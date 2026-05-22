@@ -17,11 +17,11 @@ Agentic electrical design dashboard and Telegram intake system for floor-by-floo
 
 Vercel environment variable names are case-sensitive. Use `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_BASE_URL` as the primary Telegram values. `INSTALLER_TELEGRAM_BOT_TOKEN`, `INSTALLER_WEBHOOK_BASE_URL`, and `ORCHESTRATOR_URL` are supported fallbacks, but the primary names are preferred.
 
-The generation pipeline uses Grok for the first design pass and OpenAI as a professional critique/correction reviewer. Grok creates the initial electrical overlay and BOQ, then OpenAI cleans readability and runs a background QA check for user requirements, blurry labels, cut symbols, symbol-legend consistency, mandatory fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/MSU clarity, design accuracy, professionalism, and BOQ countability. The first Grok design is saved to the dashboard immediately after Grok BOQ generation; if OpenAI QA finds issues and the floor has not already been approved, one OpenAI correction pass redesigns the missing/weak parts and updates the BOQ.
+The generation pipeline uses OpenAI GPT-5.5 for the electrical design image, structured symbol legend, and BOQ. OpenAI also runs the readability cleanup and background QA check for user requirements, blurry labels, cut symbols, symbol-legend consistency, mandatory fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/MSU clarity, design accuracy, professionalism, and BOQ countability. If OpenAI QA finds issues and the floor has not already been approved, one OpenAI correction pass redesigns the missing/weak parts and updates the BOQ.
 
-BOQ generation is counted by Grok from the generated design image. Visible lamps, switches, sockets, DB/protection items, emergency/fire/data devices, and route allowances are counted from the drawing; uncertain cable/conduit lengths should be marked for site verification rather than replaced with generic template quantities.
+BOQ generation is counted by OpenAI from the generated design image. Visible lamps, switches, sockets, DB/protection items, emergency/fire/data devices, and route allowances are counted from the drawing; uncertain cable/conduit lengths should be marked for site verification rather than replaced with generic template quantities.
 
-Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. Optional OpenAI overrides are `OPENAI_IMAGE_MODEL` (default `gpt-image-1.5`) for readability edits and `OPENAI_REVIEW_MODEL` (default `gpt-5.5`) for QA.
+Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. Optional OpenAI overrides are `OPENAI_IMAGE_MODEL` (default `gpt-5.5`) for design/readability edits and `OPENAI_REVIEW_MODEL` (default `gpt-5.5`) for BOQ and QA.
 
 After adding or changing Vercel environment variables, redeploy the project so runtime functions receive the new values.
 

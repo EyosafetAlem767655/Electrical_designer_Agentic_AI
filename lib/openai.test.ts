@@ -9,7 +9,7 @@ afterEach(() => {
 });
 
 describe("OpenAI design finishing", () => {
-  it("creates the electrical design image directly with OpenAI for Grok QA", async () => {
+  it("creates the electrical design image directly with OpenAI GPT-5.5", async () => {
     process.env.OPENAI_API_KEY = "openai-test";
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(
@@ -37,8 +37,7 @@ describe("OpenAI design finishing", () => {
     expect(image.b64_json).toBe(Buffer.from("design").toString("base64"));
     expect(requests[1].url).toBe("https://api.openai.com/v1/images/edits");
     const form = requests[1].init?.body as FormData;
-    expect(form.get("model")).toBe("gpt-image-1.5");
-    expect(form.get("input_fidelity")).toBe("high");
+    expect(form.get("model")).toBe("gpt-5.5");
     expect(String(form.get("prompt"))).toContain("Create a professional Ethiopian/EBCS + IEC electrical installation drawing");
     expect(String(form.get("prompt"))).toContain("fluorescent lamp fixtures");
     expect(String(form.get("prompt"))).toContain("manual wall switches");
@@ -115,7 +114,7 @@ describe("OpenAI design finishing", () => {
     expect(review.prompt_additions.join(" ")).toContain("fluorescent lamp fixtures");
   });
 
-  it("QA-checks Grok designs through the Responses API with structured JSON", async () => {
+  it("QA-checks OpenAI designs through the Responses API with structured JSON", async () => {
     process.env.OPENAI_API_KEY = "openai-test";
     process.env.OPENAI_REVIEW_MODEL = "gpt-5.5-qa";
     const requests: Array<{ url: string; init?: RequestInit }> = [];
@@ -132,7 +131,7 @@ describe("OpenAI design finishing", () => {
               symbol_issues: ["Cut P symbol in lobby"],
               requirement_issues: ["Missing manual switch at stair door"],
               boq_issues: ["BOQ does not count fluorescent lamps"],
-              correction_prompt: "Grok: repair blurry legend, restore P symbol, add stair switch, and regenerate counted BOQ."
+              correction_prompt: "OpenAI: repair blurry legend, restore P symbol, add stair switch, and regenerate counted BOQ."
             })
           }),
           { status: 200 }
@@ -190,7 +189,7 @@ describe("OpenAI design finishing", () => {
 
     expect(qa.approved).toBe(false);
     expect(qa.readability_issues[0]).toMatch(/valid JSON/i);
-    expect(qa.correction_prompt).toContain("Grok must correct");
+    expect(qa.correction_prompt).toContain("OpenAI must correct");
   });
 
   it("uses OpenAI image edits to professionalize the overlay while preserving the original plan", async () => {
@@ -215,15 +214,14 @@ describe("OpenAI design finishing", () => {
     expect(image.b64_json).toBe(Buffer.from("final").toString("base64"));
     expect(requests[2].url).toBe("https://api.openai.com/v1/images/edits");
     const form = requests[2].init?.body as FormData;
-    expect(form.get("model")).toBe("gpt-image-1.5");
-    expect(form.get("input_fidelity")).toBe("high");
+    expect(form.get("model")).toBe("gpt-5.5");
     expect(form.getAll("image[]")).toHaveLength(2);
     expect(String(form.get("prompt"))).toContain("Professional electrical drafting readability and symbol check pass");
     expect(String(form.get("prompt"))).toContain("the first image is the locked original architectural floor plan");
     expect(String(form.get("prompt"))).toContain("Preserve the original architectural floor plan exactly");
     expect(String(form.get("prompt"))).toContain("Do not alter, redraw, restyle, crop");
     expect(String(form.get("prompt"))).toContain("Improve readability only");
-    expect(String(form.get("prompt"))).toContain("Grok/OpenAI is the design owner");
+    expect(String(form.get("prompt"))).toContain("OpenAI GPT-5.5 is the design owner");
     expect(String(form.get("prompt"))).toContain("Do not create or keep an AI-drawn legend");
     expect(String(form.get("prompt"))).toContain("Ensure symbols remain standard and explainable by the dashboard legend");
     expect(String(form.get("prompt"))).toContain("verify readability and symbol clarity only");

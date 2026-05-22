@@ -28,27 +28,27 @@ export function describeJobStage(job?: Pick<Job, "type" | "status" | "payload" |
         detail: [revision, "cleaning blurry labels and cut symbols"].filter(Boolean).join(" - ")
       };
     }
-    if (phase === "openai_fix" || phase === "grok_fix" || (designAttempt && designAttempt > 1)) {
+    if (designAttempt && designAttempt > 1) {
       return {
-        label: "OpenAI critique correction",
-        detail: [revision, designAttempt ? `attempt ${designAttempt}` : null, "fixing design accuracy and updating BOQ"].filter(Boolean).join(" - ")
+        label: "OpenAI design correction",
+        detail: [revision, `attempt ${designAttempt}`, "redesigning from QA feedback and updating BOQ"].filter(Boolean).join(" - ")
       };
     }
     if (phase === "final_save") {
       return {
         label: "Saving reviewed design",
-        detail: [revision, "storing drawing, legend, and Grok BOQ"].filter(Boolean).join(" - ")
+        detail: [revision, "storing drawing, legend, and OpenAI BOQ"].filter(Boolean).join(" - ")
       };
     }
-    if (phase === "grok_design" || !phase) {
+    if (phase === "openai_design" || !phase) {
       return {
-        label: "Grok design + BOQ",
-        detail: [revision, job.type === "revision_design" ? "Grok revision overlay, OpenAI readability check, Grok BOQ" : "Grok electrical overlay, OpenAI readability check, Grok BOQ"].filter(Boolean).join(" - ")
+        label: "OpenAI GPT-5.5 design + BOQ",
+        detail: [revision, job.type === "revision_design" ? "OpenAI revision overlay, readability check, and BOQ" : "OpenAI electrical overlay, readability check, and BOQ"].filter(Boolean).join(" - ")
       };
     }
     return {
-      label: "Grok design + BOQ",
-      detail: [revision, "Grok electrical design pipeline"].filter(Boolean).join(" - ")
+      label: "OpenAI GPT-5.5 design + BOQ",
+      detail: [revision, "OpenAI electrical design pipeline"].filter(Boolean).join(" - ")
     };
   }
 
