@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createElectricalDesignWithOpenAI, evaluateDesignImageWithOpenAI, improveDesignTextWithOpenAI, reviewDesignPlanWithOpenAI } from "@/lib/openai";
+import { createElectricalDesignWithOpenAI, createSchematicRenderPlanWithOpenAI, evaluateDesignImageWithOpenAI, improveDesignTextWithOpenAI, reviewDesignPlanWithOpenAI } from "@/lib/openai";
 
 const originalEnv = { ...process.env };
 
@@ -116,6 +116,50 @@ describe("OpenAI design finishing", () => {
     expect(review.approved).toBe(false);
     expect(review.required_changes[0]).toMatch(/valid JSON/i);
     expect(review.prompt_additions.join(" ")).toContain("fluorescent lamp fixtures");
+  });
+
+  it("uses OpenAI vision/reasoning to create a structured code-render plan", async () => {
+    process.env.OPENAI_API_KEY = "openai-test";
+    process.env.OPENAI_DESIGN_MODEL = "gpt-5.1-plan";
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        return new Response(
+          JSON.stringify({
+            output_text: JSON.stringify({
+              devices: [
+                { kind: "MSU", id: "MSU", label: "MSU", x: 0.1, y: 0.1 },
+                { kind: "FL", id: "FL-1", label: "FL", x: 0.3, y: 0.4 },
+                { kind: "SO", id: "SO-1", label: "SO-1", x: 0.4, y: 0.5 }
+              ],
+              routes: [{ kind: "lighting", id: "L1", label: "L1 lighting", points: [[0.1, 0.2], [0.4, 0.2]] }],
+              notes: [{ label: "ELECTRICAL METER ROOM", x: 0.08, y: 0.12, kind: "MSU" }],
+              boq_items: [{ category: "Lighting", item: "Fluorescent lamp fixtures", specification: "230V fluorescent", unit: "No.", quantity: 1, standard: "EBCS / IEC 60598" }]
+            })
+          }),
+          { status: 200 }
+        );
+      })
+    );
+
+    const plan = await createSchematicRenderPlanWithOpenAI({
+      projectName: "Nova Heights",
+      floorName: "Basement",
+      buildingPurpose: "Parking",
+      sourceImageUrl: "data:image/png;base64,ZmFrZQ==",
+      requirements: { special_requirements: "no EV chargers" }
+    });
+
+    expect(plan.devices?.map((device) => device.kind)).toEqual(expect.arrayContaining(["MSU", "FL", "SO"]));
+    expect(plan.routes?.[0]).toMatchObject({ kind: "lighting", id: "L1" });
+    expect(plan.boq_items?.[0].item).toContain("Fluorescent");
+    const body = JSON.parse(String(requests[0].init?.body ?? "{}")) as Record<string, unknown>;
+    expect(body).toMatchObject({ model: "gpt-5.1-plan", reasoning: { effort: "medium" } });
+    expect(JSON.stringify(body)).toContain("code renderer");
+    expect(JSON.stringify(body)).toContain("x and y are normalized");
+    expect(JSON.stringify(body)).toContain("No orphan codes");
   });
 
   it("falls back to an image-capable model when OPENAI_IMAGE_MODEL is set to gpt-5.5", async () => {

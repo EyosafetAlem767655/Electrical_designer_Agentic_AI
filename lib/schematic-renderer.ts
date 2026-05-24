@@ -1,4 +1,4 @@
-import { createCanvas, loadImage } from "@napi-rs/canvas";
+import { createCanvas, GlobalFonts, loadImage } from "@napi-rs/canvas";
 import type { BoqItem, Floor, Project, SymbolLegendItem } from "@/types";
 
 const CANVAS_WIDTH = 2048;
@@ -11,6 +11,7 @@ type RenderInput = {
   project: Pick<Project, "project_name" | "building_purpose" | "special_requirements">;
   floor: Pick<Floor, "floor_name" | "floor_number" | "architect_answers">;
   version: number;
+  plan?: SchematicRenderPlan | null;
   omittedSymbols?: string[];
   correctionPrompt?: string | null;
 };
@@ -23,6 +24,52 @@ export type RenderedSchematic = {
 
 type Context2D = ReturnType<ReturnType<typeof createCanvas>["getContext"]>;
 type Point = [number, number];
+
+export type SchematicDeviceKind = "MSU" | "ATS" | "DB" | "G" | "FL" | "EL" | "SW" | "SO" | "FA" | "CCTV/DATA";
+export type SchematicRouteKind = "utility" | "generator" | "distribution" | "lighting" | "emergency" | "power" | "fire" | "data";
+
+export type SchematicRenderPlan = {
+  devices?: Array<{
+    kind: SchematicDeviceKind;
+    id?: string;
+    label?: string;
+    x: number;
+    y: number;
+  }>;
+  routes?: Array<{
+    kind: SchematicRouteKind;
+    id: string;
+    label?: string;
+    points: Point[];
+  }>;
+  notes?: Array<{
+    label: string;
+    x: number;
+    y: number;
+    kind?: SchematicRouteKind | SchematicDeviceKind;
+  }>;
+  boq_items?: BoqItem[];
+};
+
+let fontRegistered = false;
+
+function registerFonts() {
+  if (fontRegistered) return;
+  fontRegistered = true;
+  const candidates = [
+    "C:\\Windows\\Fonts\\arial.ttf",
+    "C:\\Windows\\Fonts\\arialbd.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+  ];
+  for (const file of candidates) {
+    try {
+      GlobalFonts.registerFromPath(file, "Arial");
+    } catch {
+      // Missing platform font; try the next known server font path.
+    }
+  }
+}
 
 function px(value: number) {
   return PLAN.x + value * PLAN.w;
@@ -77,10 +124,32 @@ function drawBox(ctx: Context2D, x: number, y: number, w: number, h: number, str
 
 function drawText(ctx: Context2D, text: string, x: number, y: number, options: { size?: number; weight?: string; color?: string; align?: CanvasTextAlign } = {}) {
   ctx.fillStyle = options.color ?? "#202124";
-  ctx.font = `${options.weight ?? "600"} ${options.size ?? 18}px Arial, Helvetica, sans-serif`;
+  ctx.font = `${options.weight ?? "600"} ${options.size ?? 18}px Arial`;
   ctx.textAlign = options.align ?? "left";
   ctx.textBaseline = "top";
   ctx.fillText(text, x, y);
+}
+
+function wrapText(ctx: Context2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number, options: { size?: number; weight?: string; color?: string } = {}) {
+  ctx.font = `${options.weight ?? "500"} ${options.size ?? 12}px Arial`;
+  ctx.fillStyle = options.color ?? "#202124";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  const words = text.split(/\s+/);
+  let line = "";
+  let currentY = y;
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (ctx.measureText(candidate).width > maxWidth && line) {
+      ctx.fillText(line, x, currentY);
+      currentY += lineHeight;
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) ctx.fillText(line, x, currentY);
+  return currentY + lineHeight;
 }
 
 function route(ctx: Context2D, points: Point[], color: string, options: { width?: number; dash?: number[] } = {}) {
@@ -100,17 +169,19 @@ function route(ctx: Context2D, points: Point[], color: string, options: { width?
 }
 
 function labelBox(ctx: Context2D, x: number, y: number, text: string, color: string, fill = "#ffffff", size = 18) {
-  ctx.font = `700 ${size}px Arial, Helvetica, sans-serif`;
+  ctx.font = `700 ${size}px Arial`;
   const w = Math.max(42, ctx.measureText(text).width + 16);
   drawBox(ctx, x - w / 2, y - 14, w, 28, color, fill, 3);
   drawText(ctx, text, x, y - 8, { size, weight: "700", color, align: "center" });
 }
 
 function smallNote(ctx: Context2D, x: number, y: number, text: string, color: string, fill = "#ffffff") {
-  ctx.font = "600 15px Arial, Helvetica, sans-serif";
-  const w = Math.max(80, ctx.measureText(text).width + 14);
-  drawBox(ctx, x, y, w, 28, color, fill, 2);
-  drawText(ctx, text, x + 7, y + 6, { size: 15, weight: "600", color });
+  const lines = text.split("\n");
+  ctx.font = "600 15px Arial";
+  const w = Math.max(80, Math.max(...lines.map((line) => ctx.measureText(line).width)) + 14);
+  const h = 14 + lines.length * 17;
+  drawBox(ctx, x, y, w, h, color, fill, 2);
+  lines.forEach((line, index) => drawText(ctx, line, x + 7, y + 6 + index * 17, { size: 15, weight: "600", color }));
 }
 
 function flSymbol(ctx: Context2D, x: number, y: number, label = "FL") {
@@ -162,7 +233,104 @@ function cctvSymbol(ctx: Context2D, x: number, y: number) {
   labelBox(ctx, x, y, "CD", "#4d4d4d", "#ffffff", 14);
 }
 
-function drawDeviceAndRoutes(ctx: Context2D, omittedSymbols?: string[]) {
+function colorForKind(kind?: SchematicRouteKind | SchematicDeviceKind) {
+  switch (kind) {
+    case "MSU":
+    case "utility":
+      return "#111111";
+    case "ATS":
+    case "G":
+    case "generator":
+      return "#d76b18";
+    case "DB":
+    case "SO":
+    case "distribution":
+      return "#1666d8";
+    case "FL":
+    case "lighting":
+      return "#d600a9";
+    case "EL":
+    case "emergency":
+    case "FA":
+    case "fire":
+      return "#e32020";
+    case "SW":
+    case "power":
+      return "#008b4a";
+    case "CCTV/DATA":
+    case "data":
+      return "#555555";
+    default:
+      return "#202124";
+  }
+}
+
+function routeOptions(kind: SchematicRouteKind) {
+  switch (kind) {
+    case "utility":
+      return { color: "#111111", width: 6, dash: [] };
+    case "generator":
+      return { color: "#d76b18", width: 5, dash: [14, 10] };
+    case "distribution":
+      return { color: "#1666d8", width: 5, dash: [] };
+    case "lighting":
+      return { color: "#d600a9", width: 4, dash: [14, 8] };
+    case "emergency":
+      return { color: "#e32020", width: 4, dash: [12, 8] };
+    case "power":
+      return { color: "#008b4a", width: 4, dash: [] };
+    case "fire":
+      return { color: "#e32020", width: 3, dash: [8, 8] };
+    case "data":
+      return { color: "#555555", width: 3, dash: [5, 7] };
+  }
+}
+
+function normalizedPoint([x, y]: Point): Point {
+  return [px(Math.max(0.02, Math.min(0.96, x))), py(Math.max(0.02, Math.min(0.92, y)))];
+}
+
+function drawDevice(ctx: Context2D, device: NonNullable<SchematicRenderPlan["devices"]>[number]) {
+  const [x, y] = normalizedPoint([device.x, device.y]);
+  if (device.kind === "FL") flSymbol(ctx, x, y, device.label ?? "FL");
+  else if (device.kind === "EL") elSymbol(ctx, x, y);
+  else if (device.kind === "SW") switchSymbol(ctx, x, y, device.label ?? device.id ?? "S");
+  else if (device.kind === "SO") socketSymbol(ctx, x, y, device.label ?? device.id ?? "SO");
+  else if (device.kind === "FA") faSymbol(ctx, x, y);
+  else if (device.kind === "CCTV/DATA") cctvSymbol(ctx, x, y);
+  else labelBox(ctx, x, y, device.kind, colorForKind(device.kind), "#ffffff", device.kind === "MSU" || device.kind === "ATS" ? 16 : 18);
+  const label = device.label || device.id;
+  if (label && !["FL", "EL", "SO"].includes(label)) {
+    drawText(ctx, label, x + 18, y + 12, { size: 12, weight: "700", color: colorForKind(device.kind) });
+  }
+}
+
+function drawRenderPlan(ctx: Context2D, plan: SchematicRenderPlan, omittedSymbols?: string[]) {
+  for (const item of plan.routes ?? []) {
+    if (item.points.length < 2) continue;
+    const style = routeOptions(item.kind);
+    route(ctx, item.points.map(normalizedPoint), style.color, { width: style.width, dash: style.dash });
+    const labelPoint = normalizedPoint(item.points[Math.max(0, Math.floor(item.points.length / 2) - 1)]);
+    smallNote(ctx, labelPoint[0] + 8, labelPoint[1] - 32, item.label ?? item.id, style.color, "#ffffff");
+  }
+
+  for (const device of plan.devices ?? []) {
+    if (hasOmitted(omittedSymbols, "EV") && /EV/i.test(`${device.kind} ${device.id ?? ""} ${device.label ?? ""}`)) continue;
+    drawDevice(ctx, device);
+  }
+
+  for (const note of plan.notes ?? []) {
+    const [x, y] = normalizedPoint([note.x, note.y]);
+    smallNote(ctx, x, y, note.label, colorForKind(note.kind), "#ffffff");
+  }
+}
+
+function drawDeviceAndRoutes(ctx: Context2D, omittedSymbols?: string[], plan?: SchematicRenderPlan | null) {
+  if (plan?.devices?.length || plan?.routes?.length) {
+    drawRenderPlan(ctx, plan, omittedSymbols);
+    return;
+  }
+
   const black = "#111111";
   const orange = "#d76b18";
   const blue = "#1666d8";
@@ -260,7 +428,11 @@ export function programmaticBoq(omittedSymbols?: string[]): BoqItem[] {
     { category: "Lighting controls", item: "Manual switches", specification: "Manual wall switches for lighting zones", unit: "No.", quantity: 6, standard: "IEC 60669", notes: "Switch zones S1-S6 shown on schematic." },
     { category: "Power", item: "220-230V earthed socket outlets", specification: "Earthed socket outlets on P1 circuit", unit: "No.", quantity: 9, standard: "IEC 60884 / EBCS", notes: "Maintenance and usable room/socket points shown as SO-1 to SO-9." },
     { category: "Fire alarm", item: "Fire alarm devices", specification: "Fire alarm loop points", unit: "No.", quantity: 6, standard: "EBCS fire safety / IEC", notes: "Final detector type by fire alarm specialist." },
-    { category: "Low current", item: "CCTV/DATA points", specification: "CCTV/data outlets on CD1 conduit", unit: "No.", quantity: 6, standard: "IEC structured cabling practice", notes: "Final camera/data schedule by client security requirements." }
+    { category: "Low current", item: "CCTV/DATA points", specification: "CCTV/data outlets on CD1 conduit", unit: "No.", quantity: 6, standard: "IEC structured cabling practice", notes: "Final camera/data schedule by client security requirements." },
+    { category: "Containment", item: "Lighting circuit conduit/cable allowance", specification: "PVC conduit/trunking and copper conductors for L1/L2", unit: "m", quantity: 180, standard: "IEC 60364", notes: "Site verify route length after ceiling coordination." },
+    { category: "Containment", item: "Power circuit conduit/cable allowance", specification: "PVC conduit/trunking and copper conductors for P1 socket circuit", unit: "m", quantity: 120, standard: "IEC 60364", notes: "Site verify route length." },
+    { category: "Containment", item: "Emergency/fire/data route allowance", specification: "Separate containment for EL, FA, and CCTV/DATA systems", unit: "m", quantity: 160, standard: "EBCS / IEC", notes: "Site verify route length and segregation." },
+    { category: "Earthing", item: "Earthing and bonding allowance", specification: "Protective earth bonding for DB, generator, metallic containment", unit: "lot", quantity: 1, standard: "IEC 60364", notes: "Final conductor size by fault-loop and earthing design." }
   ];
   return hasOmitted(omittedSymbols, "EV") ? items.filter((item) => !/\bev\b|charger/i.test(`${item.category} ${item.item} ${item.specification}`)) : items;
 }
@@ -326,11 +498,11 @@ function drawPanel(ctx: Context2D, legend: SymbolLegendItem[], boq: BoqItem[]) {
   y += 22;
   drawText(ctx, "Visible BOQ / Quantity Takeoff", PANEL.x + 22, y, { size: 16, weight: "800" });
   y += 26;
-  drawBox(ctx, PANEL.x + 22, y, PANEL.w - 44, 232, "#d9dde3", "#ffffff", 1);
+  drawBox(ctx, PANEL.x + 22, y, PANEL.w - 44, 306, "#d9dde3", "#ffffff", 1);
   drawText(ctx, "Item", PANEL.x + 32, y + 8, { size: 12, weight: "800", color: "#5f6368" });
   drawText(ctx, "Qty", PANEL.x + PANEL.w - 82, y + 8, { size: 12, weight: "800", color: "#5f6368" });
   let rowY = y + 30;
-  for (const item of boq.slice(0, 10)) {
+  for (const item of boq.slice(0, 14)) {
     ctx.strokeStyle = "#edf0f3";
     ctx.beginPath();
     ctx.moveTo(PANEL.x + 24, rowY);
@@ -340,10 +512,11 @@ function drawPanel(ctx: Context2D, legend: SymbolLegendItem[], boq: BoqItem[]) {
     drawText(ctx, String(item.quantity), PANEL.x + PANEL.w - 72, rowY + 5, { size: 12, weight: "700", align: "center" });
     rowY += 20;
   }
-  drawText(ctx, "Concept schematic only. Final cable sizing, breaker ratings, earthing, fire alarm compliance, emergency lux levels, and installation details must be verified by a licensed electrical engineer/electrician.", PANEL.x + 22, y + 260, { size: 12, weight: "500", color: "#5f6368" });
+  wrapText(ctx, "Concept schematic only. Final cable sizing, breaker ratings, earthing, fire alarm compliance, emergency lux levels, and installation details must be verified by a licensed electrical engineer/electrician.", PANEL.x + 22, y + 326, PANEL.w - 44, 15, { size: 12, weight: "500", color: "#5f6368" });
 }
 
 export async function renderProgrammaticElectricalSchematic(input: RenderInput): Promise<RenderedSchematic> {
+  registerFonts();
   const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#ffffff";
@@ -366,14 +539,14 @@ export async function renderProgrammaticElectricalSchematic(input: RenderInput):
     const x = PLAN.x + (PLAN.w - drawW) / 2;
     const y = PLAN.y + 42;
     ctx.save();
-    ctx.globalAlpha = 0.22;
+    ctx.globalAlpha = 0.46;
     ctx.drawImage(image, x, y, drawW, drawH);
     ctx.restore();
   } catch {
     drawText(ctx, "Architectural floor plan could not be previewed; schematic overlay is still rendered.", PLAN.x + 48, PLAN.y + 80, { size: 18, weight: "700", color: "#8a1c1c" });
   }
 
-  drawDeviceAndRoutes(ctx, input.omittedSymbols);
+  drawDeviceAndRoutes(ctx, input.omittedSymbols, input.plan);
   drawText(ctx, input.floor.floor_name.toUpperCase(), PLAN.x + 110, PLAN.y + PLAN.h - 160, { size: 26, weight: "900" });
   drawText(ctx, "Revision notes: code-rendered schematic, no hallucinated legend text, separated lighting/emergency/power/data routes, standardized FL/EL/SW/SO/DB/MSU/G/ATS/FA/CD symbols.", PLAN.x, PLAN.y + PLAN.h + 18, {
     size: 12,
@@ -382,7 +555,7 @@ export async function renderProgrammaticElectricalSchematic(input: RenderInput):
   });
 
   const legend = programmaticLegend(input.omittedSymbols);
-  const boq = programmaticBoq(input.omittedSymbols);
+  const boq = input.plan?.boq_items?.length ? input.plan.boq_items : programmaticBoq(input.omittedSymbols);
   drawPanel(ctx, legend, boq);
 
   return {

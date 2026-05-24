@@ -52,6 +52,7 @@ vi.mock("@/lib/xai", () => ({
 }));
 
 vi.mock("@/lib/openai", () => ({
+  createSchematicRenderPlanWithOpenAI: vi.fn(),
   evaluateDesignImageWithOpenAI: vi.fn()
 }));
 
@@ -115,12 +116,15 @@ describe("job enqueue helpers", () => {
     ).toBe("https://example.com/design-v1.png");
   });
 
-  it("uses the programmatic renderer for design image, legend, and BOQ while keeping OpenAI as QA", () => {
+  it("uses OpenAI as a schematic planner and code rendering for image, legend, and BOQ", () => {
     const source = readFileSync(join(process.cwd(), "lib", "jobs.ts"), "utf8");
     const pipeline = source.slice(source.indexOf("async function processGenerateDesign"));
 
     expect(source).toContain('const phase = typeof job.payload.phase === "string" ? job.payload.phase : "openai_design"');
     expect(source).toContain("renderProgrammaticElectricalSchematic");
+    expect(source).toContain("createSchematicRenderPlanWithOpenAI");
+    expect(pipeline.indexOf("createSchematicRenderPlanWithOpenAI")).toBeGreaterThan(-1);
+    expect(pipeline.indexOf("renderProgrammaticElectricalSchematic")).toBeGreaterThan(pipeline.indexOf("createSchematicRenderPlanWithOpenAI"));
     expect(pipeline.indexOf("renderProgrammaticElectricalSchematic")).toBeGreaterThan(-1);
     expect(pipeline.indexOf("uploadProjectFile")).toBeGreaterThan(pipeline.indexOf("renderProgrammaticElectricalSchematic"));
     expect(pipeline.indexOf('phase: "openai_qa"')).toBeGreaterThan(pipeline.indexOf("renderProgrammaticElectricalSchematic"));
@@ -142,7 +146,7 @@ describe("job enqueue helpers", () => {
         error: null,
         payload: { phase: "openai_design", version: 1 }
       })?.label
-    ).toBe("Programmatic schematic + BOQ");
+    ).toBe("AI-planned schematic + BOQ");
 
     expect(
       describeJobStage({

@@ -42,13 +42,13 @@ export function describeJobStage(job?: Pick<Job, "type" | "status" | "payload" |
     }
     if (phase === "openai_design" || !phase) {
       return {
-        label: "Programmatic schematic + BOQ",
-        detail: [revision, job.type === "revision_design" ? "code-rendered revision overlay, structured legend, and BOQ" : "code-rendered electrical overlay, structured legend, and BOQ"].filter(Boolean).join(" - ")
+        label: "AI-planned schematic + BOQ",
+        detail: [revision, job.type === "revision_design" ? "OpenAI planned revision, code-rendered overlay, structured legend, and BOQ" : "OpenAI planned layout, code-rendered overlay, structured legend, and BOQ"].filter(Boolean).join(" - ")
       };
     }
     return {
-      label: "Programmatic schematic + BOQ",
-      detail: [revision, "controlled electrical schematic render pipeline"].filter(Boolean).join(" - ")
+      label: "AI-planned schematic + BOQ",
+      detail: [revision, "AI planning with controlled code rendering"].filter(Boolean).join(" - ")
     };
   }
 

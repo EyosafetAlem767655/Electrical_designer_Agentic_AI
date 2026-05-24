@@ -5,7 +5,7 @@ import { renderProgrammaticElectricalSchematic } from "@/lib/schematic-renderer"
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile } from "@/lib/storage";
-import { evaluateDesignImageWithOpenAI } from "@/lib/openai";
+import { createSchematicRenderPlanWithOpenAI, evaluateDesignImageWithOpenAI } from "@/lib/openai";
 import {
   analyzeFloorPlan,
   fallbackAnnotations,
@@ -455,12 +455,43 @@ async function processGenerateDesign(job: Job) {
   const omittedSymbols = projectForbidsEv(project, floor) ? ["EV"] : [];
   const legend = mergeLegendWithDefaults(DEFAULT_SYMBOL_LEGEND, omittedSymbols);
 
-  console.log("[jobs:generate_design] Programmatic schematic render started", { jobId: job.id, projectId, floorId, version, attempt, phase });
+  const renderRequirements = {
+    ai_analysis: floor.ai_analysis,
+    architect_answers: floor.architect_answers,
+    special_requirements: project.special_requirements,
+    architectural_image_url: floor.architectural_image_url,
+    previous_design: latestDesign,
+    improvement_request: improvementRequest,
+    main_supply_source: floor.architect_answers?.main_supply_source,
+    correction_prompt: correctionPrompt,
+    design_attempt: attempt,
+    forbidden_symbols: omittedSymbols,
+    standard_symbol_policy: "Use only FL, EL, SW, SO, DB, MSU, G, ATS, FA, CCTV/DATA. No orphan tags. Do not include EV when forbidden.",
+    symbol_legend: legend,
+    annotations
+  };
+
+  console.log("[jobs:generate_design] OpenAI schematic planning started", { jobId: job.id, projectId, floorId, version, attempt, phase });
+  let renderPlan: Awaited<ReturnType<typeof createSchematicRenderPlanWithOpenAI>> | null = null;
+  try {
+    renderPlan = await createSchematicRenderPlanWithOpenAI({
+      projectName: project.project_name,
+      floorName: floor.floor_name,
+      buildingPurpose: project.building_purpose,
+      sourceImageUrl: sourceImageUrl ?? designEditSourceImageUrl,
+      requirements: renderRequirements
+    });
+  } catch (planningError) {
+    console.warn("[jobs:generate_design] OpenAI schematic planning failed; using deterministic renderer fallback", planningError);
+  }
+
+  console.log("[jobs:generate_design] Programmatic schematic render started", { jobId: job.id, projectId, floorId, version, attempt, phase, aiPlanned: Boolean(renderPlan) });
   const renderedDesign = await renderProgrammaticElectricalSchematic({
     sourceImageUrl: sourceImageUrl ?? designEditSourceImageUrl,
     project,
     floor,
     version,
+    plan: renderPlan,
     omittedSymbols,
     correctionPrompt
   });

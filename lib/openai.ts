@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getEnv } from "@/lib/env";
+import type { SchematicDeviceKind, SchematicRenderPlan, SchematicRouteKind } from "@/lib/schematic-renderer";
 import type { BoqItem, SymbolLegendItem } from "@/types";
 
 type ImageResult = { url?: string; b64_json?: string; path?: string };
@@ -329,7 +330,7 @@ export async function evaluateDesignImageWithOpenAI(context: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: openAiModel("OPENAI_REVIEW_MODEL", "gpt-5.5"),
+      model: openAiModel("OPENAI_REVIEW_MODEL", "gpt-5.1"),
       reasoning: { effort: "medium" },
       text: {
         verbosity: "low",
@@ -399,6 +400,148 @@ If rejected, correction_prompt must be a concise instruction for the OpenAI corr
   return normalizeDesignQa(extractJson<unknown>(responseText(payload as OpenAiResponsesPayload), null));
 }
 
+function normalizedCoordinate(value: unknown, fallback: number) {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(parsed) ? Math.max(0.02, Math.min(0.96, parsed)) : fallback;
+}
+
+function normalizeSchematicPlan(value: unknown): SchematicRenderPlan {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const deviceKinds = new Set<SchematicDeviceKind>(["MSU", "ATS", "DB", "G", "FL", "EL", "SW", "SO", "FA", "CCTV/DATA"]);
+  const routeKinds = new Set<SchematicRouteKind>(["utility", "generator", "distribution", "lighting", "emergency", "power", "fire", "data"]);
+  const devices: NonNullable<SchematicRenderPlan["devices"]> = [];
+  for (const item of Array.isArray(record.devices) ? record.devices : []) {
+    if (!item || typeof item !== "object") continue;
+    const device = item as Record<string, unknown>;
+    const kind = typeof device.kind === "string" ? (device.kind.toUpperCase() as SchematicDeviceKind) : ("" as SchematicDeviceKind);
+    if (!deviceKinds.has(kind)) continue;
+    devices.push({
+      kind,
+      id: typeof device.id === "string" ? device.id.slice(0, 16) : undefined,
+      label: typeof device.label === "string" ? device.label.slice(0, 18) : undefined,
+      x: normalizedCoordinate(device.x, 0.5),
+      y: normalizedCoordinate(device.y, 0.5)
+    });
+  }
+
+  const routes: NonNullable<SchematicRenderPlan["routes"]> = [];
+  for (const item of Array.isArray(record.routes) ? record.routes : []) {
+    if (!item || typeof item !== "object") continue;
+    const route = item as Record<string, unknown>;
+    const kind = typeof route.kind === "string" ? (route.kind.toLowerCase() as SchematicRouteKind) : ("" as SchematicRouteKind);
+    if (!routeKinds.has(kind) || !Array.isArray(route.points)) continue;
+    const points: [number, number][] = [];
+    for (const point of route.points.slice(0, 10)) {
+      if (!Array.isArray(point) || point.length < 2) continue;
+      points.push([normalizedCoordinate(point[0], 0.5), normalizedCoordinate(point[1], 0.5)]);
+    }
+    if (points.length < 2) continue;
+    routes.push({
+      kind,
+      id: typeof route.id === "string" && route.id.trim() ? route.id.slice(0, 16) : kind.toUpperCase(),
+      label: typeof route.label === "string" ? route.label.slice(0, 36) : undefined,
+      points
+    });
+  }
+
+  const notes: NonNullable<SchematicRenderPlan["notes"]> = [];
+  for (const item of Array.isArray(record.notes) ? record.notes : []) {
+    if (!item || typeof item !== "object") continue;
+    const note = item as Record<string, unknown>;
+    const label = typeof note.label === "string" && note.label.trim() ? note.label.slice(0, 42) : null;
+    if (!label) continue;
+    const noteKind = typeof note.kind === "string" ? note.kind : "";
+    const kind =
+      deviceKinds.has(noteKind.toUpperCase() as SchematicDeviceKind)
+        ? (noteKind.toUpperCase() as SchematicDeviceKind)
+        : routeKinds.has(noteKind.toLowerCase() as SchematicRouteKind)
+          ? (noteKind.toLowerCase() as SchematicRouteKind)
+          : undefined;
+    notes.push({ label, x: normalizedCoordinate(note.x, 0.5), y: normalizedCoordinate(note.y, 0.5), kind });
+  }
+  return {
+    devices,
+    routes,
+    notes,
+    boq_items: normalizeOpenAiBoqItems(record.boq_items)
+  };
+}
+
+export async function createSchematicRenderPlanWithOpenAI(context: {
+  projectName: string;
+  floorName: string;
+  buildingPurpose?: string | null;
+  sourceImageUrl: string;
+  requirements: Record<string, unknown>;
+}) {
+  const { response, text, payload } = await openAiFetchWithRetry("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${requireOpenAiKey()}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: openAiModel("OPENAI_DESIGN_MODEL", "gpt-5.1"),
+      reasoning: { effort: "medium" },
+      text: { verbosity: "low" },
+      input: [
+        {
+          role: "system",
+          content:
+            "You are the AI electrical designer. Analyze the floor-plan image and project requirements, then return a compact JSON drawing plan for a code renderer. The renderer will draw exact symbols, text, routes, legend, and BOQ; do not return prose."
+        },
+        {
+          role: "user",
+          content: [
+            { type: "input_image", image_url: context.sourceImageUrl, detail: "high" },
+            {
+              type: "input_text",
+              text: `Create a structured electrical schematic render plan for Ethiopian/EBCS + IEC practice.
+
+Project: ${context.projectName}
+Floor: ${context.floorName}
+Building purpose: ${context.buildingPurpose ?? "not specified"}
+Requirements/context: ${limitText(context.requirements, 11000)}
+
+Return JSON only:
+{
+  "devices": [{"kind":"MSU","id":"MSU","label":"MSU","x":0.10,"y":0.10}],
+  "routes": [{"kind":"utility","id":"F-01","label":"MSU -> ATS","points":[[0.08,0.10],[0.45,0.10]]}],
+  "notes": [{"label":"ELECTRICAL METER ROOM","x":0.08,"y":0.14,"kind":"MSU"}],
+  "boq_items": [{"category":"Lighting","item":"Fluorescent lamp fixtures","specification":"230V fluorescent batten/linear fittings","unit":"No.","quantity":20,"standard":"EBCS / IEC 60598","notes":"Counted from planned visible FL symbols"}]
+}
+
+Coordinate rules:
+- x and y are normalized 0..1 inside the architectural plan image.
+- Place devices near actual rooms/zones visible in the floor plan, not in a decorative side panel.
+- Keep routes sparse, orthogonal, and electrician-readable. Use trunk routes plus short branches, not dense spaghetti.
+
+Mandatory symbols:
+- MSU main incoming supply/source from transformer or utility. If source location is unknown, put MSU? in the electrical meter/service room or most likely incomer zone.
+- DB floor distribution board.
+- ATS and G if generator/ATS is required.
+- FL fluorescent lamps, EL emergency lights, SW manual switches, SO 220-230V earthed sockets, FA fire alarm, CCTV/DATA.
+- Do not include EV when requirements forbid EV chargers.
+
+Professional constraints:
+- Main FL lighting and EL emergency lighting must be visually separate.
+- Switches must be near entrances/control points and associated with zones.
+- Sockets must cover practical rooms/usable zones and remain clearly non-EV when EV is forbidden.
+- BOQ must include counted devices plus cable/conduit/containment allowances for lighting, power, emergency, fire, data/CCTV, generator feeder, and earthing/bonding.
+- Use only these names: FL, EL, SW, SO, DB, MSU, G, ATS, FA, CCTV/DATA. No orphan codes.`
+            }
+          ]
+        }
+      ]
+    })
+  }, "OpenAI schematic render planning");
+  if (!response.ok) {
+    throw new Error(`OpenAI schematic render planning failed: ${openAiErrorMessage(response.status, payload, text)}`);
+  }
+
+  return normalizeSchematicPlan(extractJson<unknown>(responseText(payload as OpenAiResponsesPayload), {}));
+}
+
 export async function reviewDesignPlanWithOpenAI(context: {
   projectName: string;
   floorName: string;
@@ -413,7 +556,7 @@ export async function reviewDesignPlanWithOpenAI(context: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: openAiModel("OPENAI_REVIEW_MODEL", "gpt-5.5"),
+      model: openAiModel("OPENAI_REVIEW_MODEL", "gpt-5.1"),
       reasoning: { effort: "medium" },
       text: { verbosity: "low" },
       input: [
@@ -567,7 +710,7 @@ export async function generateDesignPackageWithOpenAI(context: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: openAiModel("OPENAI_REVIEW_MODEL", "gpt-5.5"),
+      model: openAiModel("OPENAI_REVIEW_MODEL", "gpt-5.1"),
       reasoning: { effort: "medium" },
       text: { verbosity: "low" },
       input: [
