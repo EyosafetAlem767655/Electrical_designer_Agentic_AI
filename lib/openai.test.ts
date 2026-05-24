@@ -172,6 +172,41 @@ describe("OpenAI design finishing", () => {
     expect(form.get("model")).toBe("gpt-image-2");
   });
 
+  it("keeps OpenAI image edit prompts under the 32000 character limit", async () => {
+    process.env.OPENAI_API_KEY = "openai-test";
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (url === "https://example.com/plan.png") {
+          return new Response(Buffer.from("fake-plan"), { status: 200, headers: { "content-type": "image/png" } });
+        }
+        return new Response(JSON.stringify({ data: [{ b64_json: Buffer.from("design").toString("base64") }] }), { status: 200 });
+      })
+    );
+
+    await createElectricalDesignWithOpenAI({
+      projectName: "Nova Heights",
+      projectCode: "NOVA123",
+      floorName: "Basement",
+      floorNumber: 0,
+      revision: 3,
+      sourceImageUrl: "https://example.com/plan.png",
+      correctionPrompt: "Fix readability and remove EV labels. ".repeat(700),
+      requirements: {
+        special_requirements: "no EV chargers; generator in storage room; ".repeat(1000),
+        ai_analysis: { rooms: Array.from({ length: 300 }, (_, index) => `Room ${index} ` + "details ".repeat(30)) }
+      }
+    });
+
+    const form = requests[1].init?.body as FormData;
+    const prompt = String(form.get("prompt"));
+    expect(prompt.length).toBeLessThanOrEqual(32000);
+    expect(prompt).toContain("do not draw EV, EV1");
+    expect(prompt).toContain("Do not use unexplained codes");
+  });
+
   it("retries transient OpenAI 502 responses and strips HTML from final errors", async () => {
     process.env.OPENAI_API_KEY = "openai-test";
     let calls = 0;

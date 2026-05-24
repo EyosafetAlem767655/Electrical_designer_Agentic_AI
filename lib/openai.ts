@@ -43,6 +43,8 @@ export type OpenAiDesignPackage = {
 
 const OPENAI_TIMEOUT_MS = 240_000;
 const OPENAI_RETRY_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504]);
+const OPENAI_IMAGE_PROMPT_LIMIT = 32_000;
+const OPENAI_IMAGE_PROMPT_TARGET = 29_500;
 
 function openAiModel(name: string, fallback: string) {
   return getEnv(name) ?? fallback;
@@ -73,6 +75,19 @@ function compactErrorText(text: string) {
     .replace(/\s+/g, " ")
     .trim();
   return withoutHtml.slice(0, 260);
+}
+
+function limitText(value: unknown, maxLength: number) {
+  const text = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 18)}... [truncated]`;
+}
+
+function clampOpenAiImagePrompt(prompt: string) {
+  if (prompt.length <= OPENAI_IMAGE_PROMPT_LIMIT) return prompt;
+  return `${prompt.slice(0, OPENAI_IMAGE_PROMPT_TARGET)}
+
+[Context truncated to satisfy OpenAI image prompt length. Preserve the locked architectural plan. Use only standardized, legend-defined electrical tags: FL, EL, SW, SO/P, DB, MSU, G, ATS, FA, CCTV/DATA. Do not use EV/EV1 unless explicitly requested. Do not use orphan codes such as D1/D2/D3/D6, DE, EE, EF, IG, K, 9A1. Keep routes uncluttered and electrician-readable.]`;
 }
 
 function openAiErrorMessage(status: number, payload: { error?: { message?: string } }, text: string) {
@@ -343,13 +358,16 @@ export async function evaluateDesignImageWithOpenAI(context: {
 Project: ${context.projectName}
 Floor: ${context.floorName}
 Building purpose: ${context.buildingPurpose ?? "not specified"}
-Requirements/context: ${JSON.stringify(context.requirements)}
+Requirements/context: ${limitText(context.requirements, 12000)}
 
 Check these non-negotiable items:
 - Readability: no blurry text, pseudo-text, misspelled labels, cut symbols, orphan tags, or unreadable key explanations.
 - Symbol explanation: every visible symbol family in the drawing must be explained by the structured symbol legend; reject unexplained or cut-off symbols.
 - Defaults: fluorescent lamps, manual switches, and 220-230V earthed socket outlets must be present where practical on every floor and usable room/zone unless explicitly overridden.
+- Standard naming: use FL, EL, SW, SO/P, DB, MSU, G, ATS, FA, CCTV/DATA consistently. Reject orphan/ambiguous tags such as D1/D2/D3/D6, DE, EE, EF, IG, K, 9A1 unless clearly defined.
+- No-EV compliance: if requirements say no EV chargers, reject any EV, EV1, EV charger legend entry, charger route, or charger BOQ item.
 - Source/distribution: main supply unit/source from transformer or utility incomer must be marked as MSU/MSU? and DB/circuit routes must be understandable.
+- Generator/ATS: if required, G location and ATS/MSU/DB route must be visible and understandable, and BOQ must match visible symbols.
 - Professionalism/design accuracy: drawing must be practical, electrician-readable, visually clean, dimensionally respectful of the base plan, and accurate to the user's stated requirements and floor use.
 - BOQ: BOQ must exist, must be generated from the visible OpenAI design, must include counted lamps, switches, sockets, DB/protection, routes/conduit/cable allowances, and applicable emergency/fire/data/EV/generator devices.
 - Legend/symbol sheet should be the structured dashboard/PDF legend, not blurry AI text inside the image.
@@ -460,9 +478,7 @@ export async function createElectricalDesignWithOpenAI(context: {
         ? "Revise the existing electrical overlay according to the architect/engineer request while preserving correct existing work."
         : "Create the electrical design overlay directly on the architectural floor plan.";
 
-  form.append(
-    "prompt",
-    `Create a professional Ethiopian/EBCS + IEC electrical installation drawing.
+  const prompt = clampOpenAiImagePrompt(`Create a professional Ethiopian/EBCS + IEC electrical installation drawing.
 
 ${action}
 
@@ -476,13 +492,18 @@ Hard requirements:
 - Non-negotiable defaults for every floor: fluorescent lamp fixtures, manual switches, and 220-230V earthed socket outlets. Do not omit these systems. Every room, lobby, stair, service room, corridor, parking bay zone, ramp, equipment area, and practical usable zone needs visible fluorescent lighting coverage, manual switch/control points, and socket outlets where physically practical.
 - For basement/parking floors, add repeated fluorescent fixtures across open parking bays, drive aisles, ramps, corners, stair/lift lobbies, generator/electrical/storage rooms, and service alcoves. Add manual switches at every entrance, ramp access, stair/lift lobby, generator/electrical room, and service alcove. Add earthed sockets at DB/equipment points, perimeter/column maintenance points, generator/electrical rooms, security/attendant/cleaning points, and practical service zones.
 - Place the main supply unit/source from transformer or utility incomer as MSU if known. If unknown, mark the likely incoming source as MSU? near the DB/incomer and route DB logic from it.
+- If requirements say no EV chargers, do not draw EV, EV1, charger symbols, charger routes, charger labels, or EV legend entries.
+- If a generator is required, mark it clearly with G in the specified storage/generator room, mark ATS near the supply/DB path, and show an understandable G -> ATS -> MSU/DB essential supply route.
 - Use LED only if the architect/project requirements explicitly request LED.
 - Use Ethiopian/EBCS and IEC/EU language: 220-230V single-phase, 380-400V three-phase where needed, 50Hz, copper conductors in mm2, DIN-rail MCB/RCBO/RCCB, PVC conduit/trunking, IP-rated fittings for wet/outdoor zones.
 - Avoid US/NEC terms such as AWG, NEMA, 120V, split-phase, or receptacle.
 - Make the drawing electrician-readable and BOQ-countable through clear symbols, consistent colors, visible routes, and simple circuit IDs.
-- Include a small clean symbol legend/symbol sheet only if it can be kept readable inside an existing clear margin. Use symbol plus short meaning only, such as "FL - fluorescent lamp", "S - manual switch", "P - socket outlet", "DB - distribution board", "MSU - main supply". Do not include BOQ quantities, specifications, schedules, paragraphs, or title-block data inside the image.
+- Use only standardized, legend-defined symbols and tags: FL fluorescent lamp, EL emergency light, SW manual switch, SO or P earthed socket outlet, DB distribution board, MSU main supply, G generator, ATS automatic transfer switch, FA fire alarm, CCTV/DATA low-current point. Do not use unexplained codes such as D1, D2, D3, D6, DE, EE, EF, IG, K, 9A1, or random one-off tags.
+- Include a small clean symbol legend/symbol sheet only if it can be kept readable inside an existing clear margin. Use symbol plus short meaning only, such as "FL - fluorescent lamp", "SW - manual switch", "SO - socket outlet", "DB - distribution board", "MSU - main supply", "G - generator", "ATS - transfer switch". Do not include BOQ quantities, specifications, schedules, paragraphs, or title-block data inside the image.
 - Text discipline is critical: no bill of quantity table, schedule, notes panel, side panel, large note box, leader-arrow callout, title-block expansion, decorative border, or paragraph text inside the image.
-- Avoid long words and specifications inside the drawing. Use only short readable tags where unavoidable: DB, FL, S, P, E, FA, D, EV1-EV5, L1-L6, P1-P6. Do not write labels like "fluorescent batten", "socket outlet", "generator 80kVA", cable sizes, lux values, or standards in the image.
+- Avoid long words and specifications inside the drawing. Use only short readable tags where unavoidable: DB, MSU, FL, EL, SW, SO/P, FA, CCTV/DATA, G, ATS, L1-L6, P1-P6. Do not write labels like "fluorescent batten", "socket outlet", "generator 80kVA", cable sizes, lux values, or standards in the image.
+- Reduce visual clutter: use fewer trunk routes with clear branch points, avoid overlapping dashed routes, keep tags away from cars/walls/boundaries/grid bubbles, and leave white space around every device symbol.
+- Every visible tag family must be explained by the structured legend and must be countable for BOQ. If a tag cannot be explained, do not draw it.
 - If an existing generated image contains a messy AI-drawn legend/title block, remove or ignore that generated legend content and keep the electrical overlay on the original plan clean.
 
 Project: ${context.projectName}
@@ -490,8 +511,8 @@ Floor: ${context.floorName}
 Drawing No: ENT-${context.projectCode}-E-${context.floorNumber}
 Revision: ${context.revision}
 Building purpose: ${context.buildingPurpose ?? "not specified"}
-Requirements and analysis: ${JSON.stringify(context.requirements)}`
-  );
+Requirements and analysis: ${limitText(context.requirements, 9000)}`);
+  form.append("prompt", prompt);
 
   const { response, text, payload } = await openAiFetchWithRetry("https://api.openai.com/v1/images/edits", {
     method: "POST",
@@ -551,8 +572,11 @@ Return strict JSON:
 
 Rules:
 - OpenAI generated or corrected the design, so OpenAI must generate the BOQ and symbol sheet from the visible final drawing.
-- Include at minimum MSU, DB, FL, S, P and any visible E, FA, D, EV, G symbols in symbol_legend.
-- BOQ must include fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/protection, wiring/conduit route allowances, and visible emergency/fire/data/EV/generator items where applicable.
+- Use standardized legend symbols only: FL, EL, SW, SO/P, DB, MSU, G, ATS, FA, CCTV/DATA. Do not output duplicate emergency-light entries such as both E and EL.
+- Include no EV/EV1/EV Charger legend or BOQ items when requirements say no EV chargers.
+- Do not include orphan/unexplained tag families such as D1/D2/D3/D6, DE, EE, EF, IG, K, 9A1 unless they are visibly defined and necessary; prefer CCTV/DATA, FA, L1-L6, P1-P6.
+- BOQ must include fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/protection, wiring/conduit route allowances, and visible emergency/fire/data/generator/ATS items where applicable.
+- If generator/ATS is required, include G and ATS only when visible on the drawing; if not visible, put a correction note rather than inventing hidden BOQ quantities.
 - If exact counts are unclear, estimate conservatively from the visible drawing and notes, and put "site verify final quantity" in notes. Do not return an empty BOQ.
 - Use Ethiopian/EBCS and IEC/EU language, mm2 copper conductors, DIN-rail protection, 220-230V single phase and 380-400V three phase where applicable.`
             }
@@ -593,9 +617,11 @@ Hard constraints:
 - Do not fade, white out, clean up, redraw, simplify, crop, or remove original architectural linework, labels, grid bubbles, parking bay markings, ramp/stair graphics, room names, or boundary lines. If the draft overlay conflicts with the locked original plan, the locked original plan wins.
 - Improve readability only: sharpen overlay line weights, align routes if already present, clean symbol placement, improve contrast, and standardize short IDs.
 - Do not redesign the electrical system in this readability pass. ${context.designerName ?? "OpenAI GPT-5.5"} is the design owner for this image. Do not add new devices/routes except to restore a clearly corrupted or unreadable symbol from the draft.
-- Ensure symbols remain standard and explainable by the dashboard legend: MSU, DB, FL, S, P, E, FA, D, EV, G.
+- Ensure symbols remain standard and explainable by the dashboard legend: FL, EL, SW, SO/P, DB, MSU, G, ATS, FA, CCTV/DATA.
+- Remove or rename orphan/ambiguous labels such as D1, D2, D3, D6, DE, EE, EF, IG, K, 9A1, and unclear EV tags unless they are explicitly required and explained by the structured legend.
 - Do not create or keep an AI-drawn legend, title block, BOQ table, schedule, side panel, large note box, leader-arrow callout, title-block expansion, external annotation area, decorative layout, or paragraph text. If the draft contains messy generated legend/title text, remove that generated text while preserving the plan and electrical overlay.
-- Use only short readable CAD IDs where unavoidable: MSU, DB, FL, S, P, E, FA, D, EV1-EV5, L1-L6, P1-P6. Do not write long equipment names, cable specifications, standards, lux values, or BOQ quantities inside the image.
+- Use only short readable CAD IDs where unavoidable: MSU, DB, FL, EL, SW, SO/P, FA, CCTV/DATA, G, ATS, L1-L6, P1-P6. Do not write long equipment names, cable specifications, standards, lux values, or BOQ quantities inside the image.
+- Reduce clutter: keep tags away from walls, cars, boundaries, and grid bubbles; avoid overlapping dashed routes; keep circuit routes grouped and electrician-readable.
 - Do not convert fluorescent fixtures to LED unless the drawing or project explicitly requests LED.
 - This pass should make OpenAI verify readability and symbol clarity only.
 

@@ -66,9 +66,25 @@ function qaIssueSummary(
   return issues.join("; ");
 }
 
-function mergeLegendWithDefaults(legend: Design["symbol_legend"]) {
-  const bySymbol = new Map(DEFAULT_SYMBOL_LEGEND.map((item) => [item.symbol.toUpperCase(), item]));
+function projectForbidsEv(project: Project, floor: Floor) {
+  const text = [project.special_requirements, floor.architect_answers, floor.ai_analysis].map((value) => (typeof value === "string" ? value : JSON.stringify(value ?? ""))).join(" ");
+  return /\bno\s+ev\b|no\s+ev\s+chargers?|without\s+ev|exclude\s+ev|remove\s+ev|no\s+electric\s+vehicle/i.test(text);
+}
+
+function filterLegendSymbols(legend: Design["symbol_legend"], omittedSymbols: string[] = []) {
+  const omitted = new Set(omittedSymbols.map((symbol) => symbol.toUpperCase()));
+  return legend.filter((item) => !omitted.has(item.symbol.toUpperCase()));
+}
+
+function filterBoqItemsForOmittedSymbols(items: BoqItem[], omittedSymbols: string[] = []) {
+  if (!omittedSymbols.some((symbol) => symbol.toUpperCase() === "EV")) return items;
+  return items.filter((item) => !/\bev\b|electric vehicle|charger/i.test(`${item.category} ${item.item} ${item.specification} ${item.notes ?? ""}`));
+}
+
+function mergeLegendWithDefaults(legend: Design["symbol_legend"], omittedSymbols: string[] = []) {
+  const bySymbol = new Map(filterLegendSymbols(DEFAULT_SYMBOL_LEGEND, omittedSymbols).map((item) => [item.symbol.toUpperCase(), item]));
   for (const item of legend) {
+    if (omittedSymbols.some((symbol) => symbol.toUpperCase() === item.symbol.toUpperCase())) continue;
     bySymbol.set(item.symbol.toUpperCase(), item);
   }
   return Array.from(bySymbol.values());
@@ -455,7 +471,8 @@ async function processGenerateDesign(job: Job) {
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
   if (!designEditSourceImageUrl) throw new Error("Floor has no image source for OpenAI design generation");
   const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
-  const legend = mergeLegendWithDefaults(DEFAULT_SYMBOL_LEGEND);
+  const omittedSymbols = projectForbidsEv(project, floor) ? ["EV"] : [];
+  const legend = mergeLegendWithDefaults(DEFAULT_SYMBOL_LEGEND, omittedSymbols);
   const conversationHistory = await recentConversationContext(projectId, floorId);
   const baseDraftRequirements = {
     ai_analysis: floor.ai_analysis,
@@ -469,6 +486,8 @@ async function processGenerateDesign(job: Job) {
     main_supply_source: floor.architect_answers?.main_supply_source,
     correction_prompt: correctionPrompt,
     design_attempt: attempt,
+    forbidden_symbols: omittedSymbols,
+    standard_symbol_policy: "Use only FL, EL, SW, SO/P, DB, MSU, G, ATS, FA, CCTV/DATA. No orphan tags such as D1/D2/D3/D6, DE, EE, EF, IG, K, 9A1. Do not include EV when forbidden.",
     symbol_legend: legend,
     annotations
   };
@@ -513,14 +532,15 @@ async function processGenerateDesign(job: Job) {
     finalDesignImageUrl: designUrl,
     requirements: packageContext
   });
-  if (!designPackage.boq_items.length) throw new Error("OpenAI BOQ generation returned no items for this design");
+  const boqItems = filterBoqItemsForOmittedSymbols(designPackage.boq_items, omittedSymbols);
+  if (!boqItems.length) throw new Error("OpenAI BOQ generation returned no items for this design");
   console.log("[jobs:generate_design] OpenAI BOQ/legend stage completed", {
     jobId: job.id,
     projectId,
     floorId,
     version,
     attempt,
-    itemCount: designPackage.boq_items.length,
+    itemCount: boqItems.length,
     legendCount: designPackage.symbol_legend.length
   });
 
@@ -533,12 +553,13 @@ async function processGenerateDesign(job: Job) {
     designUrl,
     imagePath,
     annotations,
-    symbolLegend: designPackage.symbol_legend.length ? designPackage.symbol_legend : legend,
-    boqItems: designPackage.boq_items,
+    symbolLegend: filterLegendSymbols(designPackage.symbol_legend.length ? designPackage.symbol_legend : legend, omittedSymbols),
+    boqItems,
     improvementRequest,
     revisionNotes: correctionPrompt ? `OpenAI GPT-5.5 correction applied from QA: ${correctionPrompt}` : null,
     existing: (existing ?? []) as Design[],
-    designOwner: "OpenAI GPT-5.5"
+    designOwner: "OpenAI GPT-5.5",
+    omittedSymbols
   });
 
   await createDelayedJob(job.type, {
@@ -570,9 +591,10 @@ async function saveGeneratedDesign(input: {
   revisionNotes?: string | null;
   existing: Design[];
   designOwner: "OpenAI GPT-5.5";
+  omittedSymbols?: string[];
 }) {
   const supabase = getSupabaseAdmin();
-  const finalLegend = mergeLegendWithDefaults(input.symbolLegend);
+  const finalLegend = mergeLegendWithDefaults(input.symbolLegend, input.omittedSymbols);
   const designPayload: Record<string, unknown> = {
     floor_id: input.floorId,
     version: input.version,
@@ -628,16 +650,19 @@ async function processOpenAiQaStage(job: Job) {
   const { data: designData } = await supabase.from("designs").select("*").eq("id", designId).maybeSingle();
   const design = designData as Design | null;
   const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
+  const omittedSymbols = projectForbidsEv(project, floor) ? ["EV"] : [];
   const qaContext = {
     ai_analysis: floor.ai_analysis,
     architect_answers: floor.architect_answers,
     special_requirements: project.special_requirements,
     improvement_request: improvementRequest,
-    symbol_legend: design?.symbol_legend?.length ? design.symbol_legend : DEFAULT_SYMBOL_LEGEND,
+    symbol_legend: filterLegendSymbols(design?.symbol_legend?.length ? design.symbol_legend : DEFAULT_SYMBOL_LEGEND, omittedSymbols),
     boq_items: design?.boq_items ?? [],
     annotations,
     final_design_image_url: designUrl,
-    correction_attempt: designAttempt - 1
+    correction_attempt: designAttempt - 1,
+    forbidden_symbols: omittedSymbols,
+    standard_symbol_policy: "Use only FL, EL, SW, SO/P, DB, MSU, G, ATS, FA, CCTV/DATA. Reject EV when forbidden and reject orphan tags."
   };
   console.log("[jobs:generate_design] OpenAI QA stage started", { jobId: job.id, projectId, floorId, version, attempt: designAttempt });
   const qa = await evaluateDesignImageWithOpenAI({
