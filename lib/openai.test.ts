@@ -31,6 +31,7 @@ describe("OpenAI design finishing", () => {
       buildingPurpose: "Office",
       revision: 1,
       sourceImageUrl: "https://example.com/plan.png",
+      referenceDesignImagePath: "public/reference/basement-lighting-reference.png",
       requirements: { rooms: ["Office"] }
     });
 
@@ -38,7 +39,10 @@ describe("OpenAI design finishing", () => {
     expect(requests[1].url).toBe("https://api.openai.com/v1/images/edits");
     const form = requests[1].init?.body as FormData;
     expect(form.get("model")).toBe("gpt-image-1.5");
+    expect(form.getAll("image[]")).toHaveLength(2);
     expect(String(form.get("prompt"))).toContain("Create a professional Ethiopian/EBCS + IEC electrical installation drawing");
+    expect(String(form.get("prompt"))).toContain("accepted reference electrical drawing style");
+    expect(String(form.get("prompt"))).toContain("fluorescent/main lighting layout must be distinct from emergency lighting");
     expect(String(form.get("prompt"))).toContain("fluorescent lamp fixtures");
     expect(String(form.get("prompt"))).toContain("manual wall switches");
     expect(String(form.get("prompt"))).toContain("220-230V earthed socket outlets");

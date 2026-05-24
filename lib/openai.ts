@@ -1,7 +1,9 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { getEnv } from "@/lib/env";
 import type { BoqItem, SymbolLegendItem } from "@/types";
 
-type ImageResult = { url?: string; b64_json?: string };
+type ImageResult = { url?: string; b64_json?: string; path?: string };
 
 export type OpenAiDesignReview = {
   approved: boolean;
@@ -147,7 +149,17 @@ async function imageToBlob(image: ImageResult) {
       filename: "design.png"
     };
   }
-  if (!image.url) throw new Error("OpenAI image edit needs an image URL or base64 image");
+  if (image.path) {
+    const publicPath = image.path.replace(/^\/?public[\\/]/i, "").replace(/^[/\\]+/, "");
+    const absolutePath = join(process.cwd(), "public", publicPath);
+    const buffer = await readFile(absolutePath);
+    const extension = absolutePath.toLowerCase().endsWith(".jpg") || absolutePath.toLowerCase().endsWith(".jpeg") ? "jpg" : "png";
+    return {
+      blob: new Blob([buffer], { type: extension === "jpg" ? "image/jpeg" : "image/png" }),
+      filename: `reference.${extension}`
+    };
+  }
+  if (!image.url) throw new Error("OpenAI image edit needs an image URL, local path, or base64 image");
   if (image.url.startsWith("data:")) {
     const { buffer, contentType } = dataUrlToBuffer(image.url);
     return {
@@ -362,6 +374,7 @@ Requirements/context: ${limitText(context.requirements, 12000)}
 
 Check these non-negotiable items:
 - Readability: no blurry text, pseudo-text, misspelled labels, cut symbols, orphan tags, or unreadable key explanations.
+- Layout discipline: reject mixed/gibberish lighting layouts where FL main lights, EL emergency lights, switch routes, socket routes, and emergency routes are visually blended or unclear.
 - Symbol explanation: every visible symbol family in the drawing must be explained by the structured symbol legend; reject unexplained or cut-off symbols.
 - Defaults: fluorescent lamps, manual switches, and 220-230V earthed socket outlets must be present where practical on every floor and usable room/zone unless explicitly overridden.
 - Standard naming: use FL, EL, SW, SO/P, DB, MSU, G, ATS, FA, CCTV/DATA consistently. Reject orphan/ambiguous tags such as D1/D2/D3/D6, DE, EE, EF, IG, K, 9A1 unless clearly defined.
@@ -449,6 +462,7 @@ export async function createElectricalDesignWithOpenAI(context: {
   revision: number;
   sourceImageUrl: string;
   originalPlanImageUrl?: string | null;
+  referenceDesignImagePath?: string | null;
   mode?: "new" | "revision" | "correction";
   correctionPrompt?: string | null;
   requirements: Record<string, unknown>;
@@ -462,13 +476,20 @@ export async function createElectricalDesignWithOpenAI(context: {
   }
   form.append("output_format", "png");
 
-  const inputs = context.originalPlanImageUrl && context.originalPlanImageUrl !== context.sourceImageUrl
+  const baseInputs = context.originalPlanImageUrl && context.originalPlanImageUrl !== context.sourceImageUrl
     ? [{ url: context.originalPlanImageUrl }, { url: context.sourceImageUrl }]
     : [{ url: context.sourceImageUrl }];
+  const inputs = context.referenceDesignImagePath ? [...baseInputs, { path: context.referenceDesignImagePath }] : baseInputs;
   const imageFieldName = inputs.length > 1 ? "image[]" : "image";
   for (const [index, input] of inputs.entries()) {
     const { blob, filename } = await imageToBlob(input);
-    form.append(imageFieldName, blob, index === 0 && inputs.length > 1 ? `locked-original-plan-${filename}` : filename);
+    const namedFile =
+      index === 0 && inputs.length > 1
+        ? `locked-original-plan-${filename}`
+        : index === inputs.length - 1 && context.referenceDesignImagePath
+          ? `accepted-electrical-reference-${filename}`
+          : filename;
+    form.append(imageFieldName, blob, namedFile);
   }
 
   const action =
@@ -485,6 +506,7 @@ ${action}
 Input image rules:
 - If one image is provided, it is the locked architectural floor plan or the existing design to edit.
 - If two images are provided, the first image is the locked original architectural floor plan and the second image is the current generated electrical design. Use the first image as the unchanged base reference and transfer/correct only the electrical overlay from the second image.
+- If a third image is provided, it is the accepted reference electrical drawing style. Copy its drafting discipline: clean magenta lighting fixtures, green switching/socket routing, red emergency routes, sparse readable symbols, separated main lighting and emergency lighting, and no clutter. Do not copy its architecture or device quantities; only copy its professional layout style.
 
 Hard requirements:
 - Preserve the architectural floor plan exactly. Do not alter, redraw, crop, stretch, erase, simplify, move, or reinterpret any wall, door, window, stair, column, room boundary, parking bay, dimension, room label, title text, or architectural symbol.
@@ -503,6 +525,7 @@ Hard requirements:
 - Text discipline is critical: no bill of quantity table, schedule, notes panel, side panel, large note box, leader-arrow callout, title-block expansion, decorative border, or paragraph text inside the image.
 - Avoid long words and specifications inside the drawing. Use only short readable tags where unavoidable: DB, MSU, FL, EL, SW, SO/P, FA, CCTV/DATA, G, ATS, L1-L6, P1-P6. Do not write labels like "fluorescent batten", "socket outlet", "generator 80kVA", cable sizes, lux values, or standards in the image.
 - Reduce visual clutter: use fewer trunk routes with clear branch points, avoid overlapping dashed routes, keep tags away from cars/walls/boundaries/grid bubbles, and leave white space around every device symbol.
+- Keep systems visually separated like the reference: fluorescent/main lighting layout must be distinct from emergency lighting; switches and sockets must be on their own clear routes; do not mix FL fixtures with EL fixtures or emergency routes.
 - Every visible tag family must be explained by the structured legend and must be countable for BOQ. If a tag cannot be explained, do not draw it.
 - If an existing generated image contains a messy AI-drawn legend/title block, remove or ignore that generated legend content and keep the electrical overlay on the original plan clean.
 
@@ -619,6 +642,7 @@ Hard constraints:
 - Do not redesign the electrical system in this readability pass. ${context.designerName ?? "OpenAI GPT-5.5"} is the design owner for this image. Do not add new devices/routes except to restore a clearly corrupted or unreadable symbol from the draft.
 - Ensure symbols remain standard and explainable by the dashboard legend: FL, EL, SW, SO/P, DB, MSU, G, ATS, FA, CCTV/DATA.
 - Remove or rename orphan/ambiguous labels such as D1, D2, D3, D6, DE, EE, EF, IG, K, 9A1, and unclear EV tags unless they are explicitly required and explained by the structured legend.
+- Main/fluorescent lighting must stay visually distinct from emergency lighting. Do not allow FL and EL symbols/routes to overlap or share unreadable labels.
 - Do not create or keep an AI-drawn legend, title block, BOQ table, schedule, side panel, large note box, leader-arrow callout, title-block expansion, external annotation area, decorative layout, or paragraph text. If the draft contains messy generated legend/title text, remove that generated text while preserving the plan and electrical overlay.
 - Use only short readable CAD IDs where unavoidable: MSU, DB, FL, EL, SW, SO/P, FA, CCTV/DATA, G, ATS, L1-L6, P1-P6. Do not write long equipment names, cable specifications, standards, lux values, or BOQ quantities inside the image.
 - Reduce clutter: keep tags away from walls, cars, boundaries, and grid bubbles; avoid overlapping dashed routes; keep circuit routes grouped and electrician-readable.

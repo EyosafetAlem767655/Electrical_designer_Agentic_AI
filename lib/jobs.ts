@@ -15,6 +15,7 @@ import type { BoqItem, Conversation, Design, Floor, Job, JobType, Project } from
 
 const MAX_JOB_ATTEMPTS = 3;
 const STALE_PROCESSING_MINUTES = 6;
+const ELECTRICAL_REFERENCE_IMAGE_PATH = "public/reference/basement-lighting-reference.png";
 
 export async function createJob(type: JobType, payload: Record<string, unknown>) {
   const supabase = getSupabaseAdmin();
@@ -503,6 +504,7 @@ async function processGenerateDesign(job: Job) {
     revision: version,
     sourceImageUrl: designEditSourceImageUrl,
     originalPlanImageUrl: sourceImageUrl,
+    referenceDesignImagePath: ELECTRICAL_REFERENCE_IMAGE_PATH,
     mode: correctionPrompt ? "correction" : improvementRequest ? "revision" : "new",
     correctionPrompt,
     requirements: baseDraftRequirements
