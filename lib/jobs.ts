@@ -1,21 +1,21 @@
 import { DEFAULT_SYMBOL_LEGEND } from "@/lib/constants";
 import { getBaseUrl, getEnv } from "@/lib/env";
 import { convertPdfToPngPages, createFloorPdf, createProjectPackagePdf } from "@/lib/pdf-utils";
+import { renderProgrammaticElectricalSchematic } from "@/lib/schematic-renderer";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage } from "@/lib/telegram";
-import { fetchStorageBase64, uploadProjectFile, uploadRemoteImage } from "@/lib/storage";
-import { createElectricalDesignWithOpenAI, evaluateDesignImageWithOpenAI, generateDesignPackageWithOpenAI, improveDesignTextWithOpenAI } from "@/lib/openai";
+import { fetchStorageBase64, uploadProjectFile } from "@/lib/storage";
+import { evaluateDesignImageWithOpenAI } from "@/lib/openai";
 import {
   analyzeFloorPlan,
   fallbackAnnotations,
   generateQuestions,
   normalizeAnnotations
 } from "@/lib/xai";
-import type { BoqItem, Conversation, Design, Floor, Job, JobType, Project } from "@/types";
+import type { BoqItem, Design, Floor, Job, JobType, Project } from "@/types";
 
 const MAX_JOB_ATTEMPTS = 3;
 const STALE_PROCESSING_MINUTES = 6;
-const ELECTRICAL_REFERENCE_IMAGE_PATH = "public/reference/basement-lighting-reference.png";
 
 export async function createJob(type: JobType, payload: Record<string, unknown>) {
   const supabase = getSupabaseAdmin();
@@ -303,26 +303,6 @@ async function designImageInput(design?: Design | null) {
   return null;
 }
 
-async function uploadGeneratedImage(imagePath: string, image: { url?: string; b64_json?: string }) {
-  if (image.url) return uploadRemoteImage(imagePath, image.url);
-  if (image.b64_json) return uploadProjectFile(imagePath, Buffer.from(image.b64_json, "base64"), "image/png");
-  throw new Error("Generated design image returned no URL or base64 payload");
-}
-
-async function recentConversationContext(projectId: string, floorId: string) {
-  const supabase = getSupabaseAdmin();
-  const { data } = await supabase
-    .from("conversations")
-    .select("sender,message,created_at")
-    .eq("project_id", projectId)
-    .or(`floor_id.eq.${floorId},floor_id.is.null`)
-    .order("created_at", { ascending: false })
-    .limit(12);
-  return ((data ?? []) as Pick<Conversation, "sender" | "message" | "created_at">[])
-    .reverse()
-    .map((item) => ({ sender: item.sender, message: item.message, created_at: item.created_at }));
-}
-
 export function chooseDesignEditSource(input: { improvementRequest?: string; originalImageUrl: string | null; previousDesignImageUrl?: string | null }) {
   return input.improvementRequest && input.previousDesignImageUrl ? input.previousDesignImageUrl : input.originalImageUrl;
 }
@@ -474,76 +454,28 @@ async function processGenerateDesign(job: Job) {
   const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
   const omittedSymbols = projectForbidsEv(project, floor) ? ["EV"] : [];
   const legend = mergeLegendWithDefaults(DEFAULT_SYMBOL_LEGEND, omittedSymbols);
-  const conversationHistory = await recentConversationContext(projectId, floorId);
-  const baseDraftRequirements = {
-    ai_analysis: floor.ai_analysis,
-    architect_answers: floor.architect_answers,
-    special_requirements: project.special_requirements,
-    conversation_history: conversationHistory,
-    architectural_image_url: floor.architectural_image_url,
-    original_architectural_image_url: sourceImageUrl,
-    previous_design: latestDesign,
-    improvement_request: improvementRequest,
-    main_supply_source: floor.architect_answers?.main_supply_source,
-    correction_prompt: correctionPrompt,
-    design_attempt: attempt,
-    forbidden_symbols: omittedSymbols,
-    standard_symbol_policy: "Use only FL, EL, SW, SO/P, DB, MSU, G, ATS, FA, CCTV/DATA. No orphan tags such as D1/D2/D3/D6, DE, EE, EF, IG, K, 9A1. Do not include EV when forbidden.",
-    symbol_legend: legend,
-    annotations
-  };
-  const projectCode = project.project_code ?? project.id.slice(0, 6).toUpperCase();
 
-  console.log("[jobs:generate_design] OpenAI design stage started", { jobId: job.id, projectId, floorId, version, attempt, phase });
-  const draftImage = await createElectricalDesignWithOpenAI({
-    projectName: project.project_name,
-    projectCode,
-    floorName: floor.floor_name,
-    floorNumber: floor.floor_number,
-    buildingPurpose: project.building_purpose,
-    revision: version,
-    sourceImageUrl: designEditSourceImageUrl,
-    originalPlanImageUrl: sourceImageUrl,
-    referenceDesignImagePath: ELECTRICAL_REFERENCE_IMAGE_PATH,
-    mode: correctionPrompt ? "correction" : improvementRequest ? "revision" : "new",
-    correctionPrompt,
-    requirements: baseDraftRequirements
+  console.log("[jobs:generate_design] Programmatic schematic render started", { jobId: job.id, projectId, floorId, version, attempt, phase });
+  const renderedDesign = await renderProgrammaticElectricalSchematic({
+    sourceImageUrl: sourceImageUrl ?? designEditSourceImageUrl,
+    project,
+    floor,
+    version,
+    omittedSymbols,
+    correctionPrompt
   });
-  console.log("[jobs:generate_design] OpenAI design stage completed", { jobId: job.id, projectId, floorId, version, attempt });
-
-  console.log("[jobs:generate_design] OpenAI readability stage started", { jobId: job.id, projectId, floorId, version, attempt });
-  const cleanedImage = await improveDesignTextWithOpenAI(draftImage, {
-    projectName: project.project_name,
-    floorName: floor.floor_name,
-    revision: version,
-    originalPlanImageUrl: sourceImageUrl,
-    designerName: "OpenAI GPT-5.5"
-  });
-  const designUrl = await uploadGeneratedImage(imagePath, cleanedImage);
-  console.log("[jobs:generate_design] OpenAI readability stage completed", { jobId: job.id, projectId, floorId, version, attempt, imagePath });
-
-  const packageContext = {
-    ...baseDraftRequirements,
-    final_design_image_url: designUrl
-  };
-  console.log("[jobs:generate_design] OpenAI BOQ/legend stage started", { jobId: job.id, projectId, floorId, version, attempt });
-  const designPackage = await generateDesignPackageWithOpenAI({
-    projectName: project.project_name,
-    floorName: floor.floor_name,
-    buildingPurpose: project.building_purpose,
-    finalDesignImageUrl: designUrl,
-    requirements: packageContext
-  });
-  const boqItems = filterBoqItemsForOmittedSymbols(designPackage.boq_items, omittedSymbols);
-  if (!boqItems.length) throw new Error("OpenAI BOQ generation returned no items for this design");
-  console.log("[jobs:generate_design] OpenAI BOQ/legend stage completed", {
+  const designUrl = await uploadProjectFile(imagePath, renderedDesign.buffer, "image/png");
+  const boqItems = filterBoqItemsForOmittedSymbols(renderedDesign.boqItems, omittedSymbols);
+  if (!boqItems.length) throw new Error("Programmatic BOQ generation returned no items for this design");
+  console.log("[jobs:generate_design] Programmatic schematic render completed", {
     jobId: job.id,
     projectId,
     floorId,
     version,
     attempt,
     itemCount: boqItems.length,
-    legendCount: designPackage.symbol_legend.length
+    legendCount: renderedDesign.symbolLegend.length,
+    imagePath
   });
 
   const design = await saveGeneratedDesign({
@@ -555,12 +487,12 @@ async function processGenerateDesign(job: Job) {
     designUrl,
     imagePath,
     annotations,
-    symbolLegend: filterLegendSymbols(designPackage.symbol_legend.length ? designPackage.symbol_legend : legend, omittedSymbols),
+    symbolLegend: filterLegendSymbols(renderedDesign.symbolLegend.length ? renderedDesign.symbolLegend : legend, omittedSymbols),
     boqItems,
     improvementRequest,
-    revisionNotes: correctionPrompt ? `OpenAI GPT-5.5 correction applied from QA: ${correctionPrompt}` : null,
+    revisionNotes: correctionPrompt ? `Programmatic correction rendered from OpenAI QA feedback: ${correctionPrompt}` : null,
     existing: (existing ?? []) as Design[],
-    designOwner: "OpenAI GPT-5.5",
+    designOwner: "Programmatic schematic renderer",
     omittedSymbols
   });
 
@@ -592,7 +524,7 @@ async function saveGeneratedDesign(input: {
   improvementRequest?: string;
   revisionNotes?: string | null;
   existing: Design[];
-  designOwner: "OpenAI GPT-5.5";
+  designOwner: string;
   omittedSymbols?: string[];
 }) {
   const supabase = getSupabaseAdmin();
@@ -629,7 +561,7 @@ async function saveGeneratedDesign(input: {
     const message =
       input.version > 1
         ? `${input.designOwner} has updated the electrical design and BOQ for ${input.floor.floor_name} using OpenAI QA feedback. The revised design is ready for engineering review.`
-        : `OpenAI GPT-5.5 has generated the electrical design and BOQ for ${input.floor.floor_name}. OpenAI QA is checking readability, requirements, and symbols in the background while the design is available for engineering review.`;
+        : `${input.designOwner} has generated a clean code-rendered electrical schematic and BOQ for ${input.floor.floor_name}. OpenAI QA is checking readability, requirements, and symbols in the background while the design is available for engineering review.`;
     await sendTelegramMessage(input.project.telegram_chat_id, message);
     await supabase.from("conversations").insert({ project_id: input.projectId, floor_id: input.floorId, sender: "bot", message });
   }

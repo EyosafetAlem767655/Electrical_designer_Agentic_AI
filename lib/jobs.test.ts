@@ -52,10 +52,11 @@ vi.mock("@/lib/xai", () => ({
 }));
 
 vi.mock("@/lib/openai", () => ({
-  createElectricalDesignWithOpenAI: vi.fn(),
-  evaluateDesignImageWithOpenAI: vi.fn(),
-  generateDesignPackageWithOpenAI: vi.fn(),
-  improveDesignTextWithOpenAI: vi.fn()
+  evaluateDesignImageWithOpenAI: vi.fn()
+}));
+
+vi.mock("@/lib/schematic-renderer", () => ({
+  renderProgrammaticElectricalSchematic: vi.fn()
 }));
 
 vi.mock("@/lib/boq", () => ({
@@ -114,24 +115,25 @@ describe("job enqueue helpers", () => {
     ).toBe("https://example.com/design-v1.png");
   });
 
-  it("keeps the generate_design pipeline owned by OpenAI for design, BOQ, and QA", () => {
+  it("uses the programmatic renderer for design image, legend, and BOQ while keeping OpenAI as QA", () => {
     const source = readFileSync(join(process.cwd(), "lib", "jobs.ts"), "utf8");
     const pipeline = source.slice(source.indexOf("async function processGenerateDesign"));
 
     expect(source).toContain('const phase = typeof job.payload.phase === "string" ? job.payload.phase : "openai_design"');
-    expect(source).toContain("createElectricalDesignWithOpenAI");
-    expect(source).toContain("generateDesignPackageWithOpenAI");
-    expect(pipeline.indexOf("createElectricalDesignWithOpenAI")).toBeGreaterThan(-1);
-    expect(pipeline.indexOf("improveDesignTextWithOpenAI")).toBeGreaterThan(pipeline.indexOf("createElectricalDesignWithOpenAI"));
-    expect(pipeline.indexOf("generateDesignPackageWithOpenAI")).toBeGreaterThan(pipeline.indexOf("improveDesignTextWithOpenAI"));
-    expect(pipeline.indexOf('phase: "openai_qa"')).toBeGreaterThan(pipeline.indexOf("generateDesignPackageWithOpenAI"));
+    expect(source).toContain("renderProgrammaticElectricalSchematic");
+    expect(pipeline.indexOf("renderProgrammaticElectricalSchematic")).toBeGreaterThan(-1);
+    expect(pipeline.indexOf("uploadProjectFile")).toBeGreaterThan(pipeline.indexOf("renderProgrammaticElectricalSchematic"));
+    expect(pipeline.indexOf('phase: "openai_qa"')).toBeGreaterThan(pipeline.indexOf("renderProgrammaticElectricalSchematic"));
+    expect(source).not.toContain("createElectricalDesignWithOpenAI");
+    expect(source).not.toContain("generateDesignPackageWithOpenAI");
+    expect(source).not.toContain("improveDesignTextWithOpenAI");
     expect(source).not.toContain("generateDesignDraftImage");
     expect(source).not.toContain("generateDesignCorrectionDraftImage");
     expect(source).not.toContain("generateBoqItems");
     expect(source).not.toContain("async function processOpenAiFixStage");
   });
 
-  it("labels design stages by OpenAI responsibility", () => {
+  it("labels design stages by programmatic render responsibility", () => {
     expect(
       describeJobStage({
         type: "generate_design",
@@ -140,7 +142,7 @@ describe("job enqueue helpers", () => {
         error: null,
         payload: { phase: "openai_design", version: 1 }
       })?.label
-    ).toBe("OpenAI GPT-5.5 design + BOQ");
+    ).toBe("Programmatic schematic + BOQ");
 
     expect(
       describeJobStage({
@@ -160,6 +162,6 @@ describe("job enqueue helpers", () => {
         error: null,
         payload: { phase: "openai_design", designAttempt: 2 }
       })?.label
-    ).toBe("OpenAI design correction");
+    ).toBe("Programmatic schematic correction");
   });
 });

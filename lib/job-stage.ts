@@ -30,8 +30,8 @@ export function describeJobStage(job?: Pick<Job, "type" | "status" | "payload" |
     }
     if (designAttempt && designAttempt > 1) {
       return {
-        label: "OpenAI design correction",
-        detail: [revision, `attempt ${designAttempt}`, "redesigning from QA feedback and updating BOQ"].filter(Boolean).join(" - ")
+        label: "Programmatic schematic correction",
+        detail: [revision, `attempt ${designAttempt}`, "rendering QA feedback with updated BOQ"].filter(Boolean).join(" - ")
       };
     }
     if (phase === "final_save") {
@@ -42,13 +42,13 @@ export function describeJobStage(job?: Pick<Job, "type" | "status" | "payload" |
     }
     if (phase === "openai_design" || !phase) {
       return {
-        label: "OpenAI GPT-5.5 design + BOQ",
-        detail: [revision, job.type === "revision_design" ? "OpenAI revision overlay, readability check, and BOQ" : "OpenAI electrical overlay, readability check, and BOQ"].filter(Boolean).join(" - ")
+        label: "Programmatic schematic + BOQ",
+        detail: [revision, job.type === "revision_design" ? "code-rendered revision overlay, structured legend, and BOQ" : "code-rendered electrical overlay, structured legend, and BOQ"].filter(Boolean).join(" - ")
       };
     }
     return {
-      label: "OpenAI GPT-5.5 design + BOQ",
-      detail: [revision, "OpenAI electrical design pipeline"].filter(Boolean).join(" - ")
+      label: "Programmatic schematic + BOQ",
+      detail: [revision, "controlled electrical schematic render pipeline"].filter(Boolean).join(" - ")
     };
   }
 
