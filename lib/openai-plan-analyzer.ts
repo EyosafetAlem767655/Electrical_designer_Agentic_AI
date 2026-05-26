@@ -1,0 +1,212 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { getEnv } from "@/lib/env";
+import { normalizePlanSpec, planSpecJsonSchema, validatePlanSymbolConsistency, type PlanSpec } from "@/lib/plan-schema";
+import { SYMBOL_CODES } from "@/lib/symbol-dictionary";
+
+type ResponsesPayload = {
+  output_text?: string;
+  output?: Array<{ content?: Array<{ text?: string }> }>;
+  error?: { message?: string };
+};
+
+const OPENAI_TIMEOUT_MS = 240_000;
+const RETRY_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504]);
+
+function requireOpenAiKey() {
+  const key = getEnv("OPENAI_API_KEY") ?? getEnv("OPEN_AI_KEY");
+  if (!key) throw new Error("Missing required environment variable: OPENAI_API_KEY or OPEN_AI_KEY");
+  return key;
+}
+
+function model() {
+  return getEnv("OPENAI_DESIGN_MODEL") ?? "gpt-5.1";
+}
+
+function outputText(payload: ResponsesPayload) {
+  if (payload.output_text?.trim()) return payload.output_text.trim();
+  return payload.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? "").join("\n").trim() ?? "";
+}
+
+function extractJsonText(text: string) {
+  const cleaned = text.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+  try {
+    JSON.parse(cleaned);
+    return cleaned;
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("OpenAI returned no JSON object");
+    return match[0];
+  }
+}
+
+async function openAiResponses(body: Record<string, unknown>, label: string) {
+  let lastError = "";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${requireOpenAiKey()}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
+    });
+    const text = await response.text();
+    let payload: ResponsesPayload = {};
+    try {
+      payload = text ? (JSON.parse(text) as ResponsesPayload) : {};
+    } catch {
+      payload = {};
+    }
+    if (response.ok) return { text: outputText(payload), raw: text };
+    lastError = payload.error?.message ?? text;
+    if (!RETRY_STATUSES.has(response.status) || attempt === 2) {
+      throw new Error(`${label} failed: ${response.status} - ${lastError}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 750 * (attempt + 1)));
+  }
+  throw new Error(`${label} failed: ${lastError}`);
+}
+
+function truncate(value: unknown, max = 9000) {
+  const text = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  return text.length > max ? `${text.slice(0, max - 18)}... [truncated]` : text;
+}
+
+function strictJsonFormat(name: string) {
+  return {
+    format: {
+      type: "json_schema",
+      name,
+      strict: true,
+      schema: planSpecJsonSchema
+    },
+    verbosity: "low"
+  };
+}
+
+async function persistFailedOutput(projectId: string, floorId: string, raw: string, reason: string) {
+  const path = join(tmpdir(), `failed-plan-spec-${projectId}-${floorId}-${Date.now()}.json`);
+  await writeFile(path, JSON.stringify({ projectId, floorId, reason, raw }, null, 2), "utf8").catch(() => undefined);
+  return path;
+}
+
+export async function repairInvalidPlanJson(input: {
+  invalidJson: string;
+  validationError: string;
+  projectId: string;
+  floorId: string;
+}) {
+  const { text } = await openAiResponses(
+    {
+      model: model(),
+      reasoning: { effort: "medium" },
+      text: strictJsonFormat("electrical_plan_spec_repair"),
+      input: [
+        {
+          role: "system",
+          content: "Repair malformed electrical drawing JSON. Return JSON only and obey the schema exactly."
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: `The previous plan specification failed validation: ${input.validationError}
+
+Repair it without adding undefined symbols. Allowed symbols: ${SYMBOL_CODES.join(", ")}.
+JSON to repair:
+${truncate(input.invalidJson, 22000)}`
+            }
+          ]
+        }
+      ]
+    },
+    "OpenAI plan JSON repair"
+  );
+  return text;
+}
+
+export async function createPlanSpecWithOpenAI(input: {
+  projectId: string;
+  floorId: string;
+  projectName: string;
+  floorName: string;
+  buildingPurpose?: string | null;
+  sourceImageUrl: string;
+  feedback: unknown;
+  analysis?: unknown;
+  specialRequirements?: string | null;
+  improvementRequest?: string | null;
+}) {
+  const prompt = `Analyze the architectural plan image and architect feedback, then return one deterministic drawing specification JSON object only.
+
+The renderer, not the model, will draw the final technical plan. Do not describe artwork. Do not generate images. Use exact coordinates in source-image pixels. If source dimensions are unknown, estimate image_width/image_height and keep coordinates in that same estimated pixel space.
+
+Allowed symbols only: ${SYMBOL_CODES.join(", ")}.
+Required defaults unless explicitly changed: FL fluorescent lights, SW manual switches, SO 220V earthed socket outlets.
+Lighting routes must be blue. Emergency lighting routes must be red. Do not mix main lighting and emergency lighting.
+Do not design anything outside the floor boundary. If room identity is uncertain, use a clean label with VERIFY warning.
+Do not invent labels such as S5, BB, EB, OO, T, random numbers, or EV unless defined and requested. EV must not appear unless explicitly requested.
+Main distribution should be traceable: utility incomer -> MSU -> ATS -> DB. If generator backup is requested or implied, show G / 80 kVA in storage/generator area and route G -> ATS.
+Legend and BOQ must include only visible symbols and BOQ quantities must equal the visible equipment/devices.
+
+Project: ${input.projectName}
+Floor: ${input.floorName}
+Building purpose: ${input.buildingPurpose ?? "not specified"}
+Special requirements: ${input.specialRequirements ?? "none"}
+Improvement request: ${input.improvementRequest ?? "none"}
+Architect feedback/context: ${truncate(input.feedback)}
+Existing image analysis: ${truncate(input.analysis)}`;
+
+  const { text: firstText, raw } = await openAiResponses(
+    {
+      model: model(),
+      reasoning: { effort: "high" },
+      text: strictJsonFormat("electrical_plan_spec"),
+      input: [
+        {
+          role: "system",
+          content:
+            "You are a senior Ethiopian electrical design engineer. Produce strict JSON for a deterministic code renderer. Never produce final artwork or prose."
+        },
+        {
+          role: "user",
+          content: [
+            { type: "input_image", image_url: input.sourceImageUrl, detail: "high" },
+            { type: "input_text", text: prompt }
+          ]
+        }
+      ]
+    },
+    "OpenAI plan specification"
+  );
+
+  let lastText = firstText;
+  try {
+    const spec = normalizePlanSpec(JSON.parse(extractJsonText(firstText)));
+    validatePlanSymbolConsistency(spec);
+    return spec;
+  } catch (error) {
+    const validationError = error instanceof Error ? error.message : "Plan specification validation failed";
+    await persistFailedOutput(input.projectId, input.floorId, raw || firstText, validationError);
+    lastText = await repairInvalidPlanJson({
+      invalidJson: firstText,
+      validationError,
+      projectId: input.projectId,
+      floorId: input.floorId
+    });
+  }
+
+  try {
+    const spec: PlanSpec = normalizePlanSpec(JSON.parse(extractJsonText(lastText)));
+    validatePlanSymbolConsistency(spec);
+    return spec;
+  } catch (error) {
+    const validationError = error instanceof Error ? error.message : "Repaired plan specification validation failed";
+    await persistFailedOutput(input.projectId, input.floorId, lastText, validationError);
+    throw new Error(`OpenAI did not return a valid plan specification after repair: ${validationError}`);
+  }
+}

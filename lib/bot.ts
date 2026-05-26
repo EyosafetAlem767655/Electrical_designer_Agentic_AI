@@ -216,7 +216,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
 
   const supabase = getSupabaseAdmin();
   let session = await getOrCreateSession(message);
-  const text = message.text?.trim() ?? "";
+  const text = (message.text ?? message.caption ?? "").trim();
   await logMessage(
     session.project_id,
     session.current_floor_id,
@@ -330,6 +330,9 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
 
     const floor = session.current_floor_id ? ({ id: session.current_floor_id } as Floor) : await currentFloor(project.id, project.current_floor);
     await markFloorImageReceived(floor.id);
+    if (text) {
+      await supabase.from("floors").update({ architect_answers: { raw: text, source: "telegram_image_caption" } }).eq("id", floor.id);
+    }
     await createTelegramImageJob({
       projectId: project.id,
       floorId: floor.id,
@@ -338,8 +341,23 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
       contentType: image.contentType
     });
     await triggerJobProcessing();
-    await updateSession(session.id, { state: "ANALYZING", current_floor_id: floor.id });
-    await botReply(message.chat.id, project.id, floor.id, "Image received. I am analyzing the floor plan now.");
+    await updateSession(session.id, { state: text ? "DESIGNING" : "ANALYZING", current_floor_id: floor.id });
+    await botReply(message.chat.id, project.id, floor.id, text ? "Image and instructions received. I am analyzing the plan and preparing the deterministic electrical drawing." : "Image received. I am analyzing the floor plan now.");
+    return { ok: true };
+  }
+
+  if ((session.state === "ANALYZING" || session.state === "DESIGNING") && text && session.current_floor_id) {
+    await supabase.from("floors").update({ architect_answers: { raw: text, source: "telegram_followup_feedback" } }).eq("id", session.current_floor_id);
+    await botReply(message.chat.id, project.id, session.current_floor_id, "I added that feedback to the current floor. If processing has already started, the engineering dashboard can request a revision with the same note.");
+    return { ok: true };
+  }
+
+  if (session.state === "AWAITING_APPROVAL" && text && session.current_floor_id) {
+    await supabase.from("floors").update({ status: "revision_requested", architect_answers: { raw: text, source: "telegram_revision_feedback" } }).eq("id", session.current_floor_id);
+    await createJob("revision_design", { projectId: project.id, floorId: session.current_floor_id, improvementRequest: text });
+    await triggerJobProcessing();
+    await updateSession(session.id, { state: "DESIGNING" });
+    await botReply(message.chat.id, project.id, session.current_floor_id, "Revision feedback received. I am generating an updated deterministic PNG and PDF.");
     return { ok: true };
   }
 

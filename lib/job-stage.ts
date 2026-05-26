@@ -16,39 +16,21 @@ export function describeJobStage(job?: Pick<Job, "type" | "status" | "payload" |
   const revision = version ? `v${version}` : null;
 
   if (job.type === "generate_design" || job.type === "revision_design") {
-    if (phase === "openai_qa") {
-      return {
-        label: "OpenAI QA review",
-        detail: [revision, designAttempt ? `attempt ${designAttempt}` : null, "checking readability, symbols, legend, BOQ, and defaults"].filter(Boolean).join(" - ")
-      };
-    }
-    if (phase === "openai_readability") {
-      return {
-        label: "OpenAI text/symbol cleanup",
-        detail: [revision, "cleaning blurry labels and cut symbols"].filter(Boolean).join(" - ")
-      };
-    }
     if (designAttempt && designAttempt > 1) {
       return {
-        label: "Programmatic schematic correction",
-        detail: [revision, `attempt ${designAttempt}`, "rendering QA feedback with updated BOQ"].filter(Boolean).join(" - ")
+        label: "Deterministic plan revision",
+        detail: [revision, `attempt ${designAttempt}`, "validating JSON spec and rendering PNG/PDF"].filter(Boolean).join(" - ")
       };
     }
-    if (phase === "final_save") {
+    if (phase === "plan_spec" || !phase) {
       return {
-        label: "Saving reviewed design",
-        detail: [revision, "storing drawing, legend, and OpenAI BOQ"].filter(Boolean).join(" - ")
-      };
-    }
-    if (phase === "openai_design" || !phase) {
-      return {
-        label: "AI-planned schematic + BOQ",
-        detail: [revision, job.type === "revision_design" ? "OpenAI planned revision, code-rendered overlay, structured legend, and BOQ" : "OpenAI planned layout, code-rendered overlay, structured legend, and BOQ"].filter(Boolean).join(" - ")
+        label: "JSON spec + deterministic render",
+        detail: [revision, job.type === "revision_design" ? "OpenAI JSON revision, Python-rendered PNG/PDF, structured legend, and BOQ" : "OpenAI JSON spec, Python-rendered PNG/PDF, structured legend, and BOQ"].filter(Boolean).join(" - ")
       };
     }
     return {
-      label: "AI-planned schematic + BOQ",
-      detail: [revision, "AI planning with controlled code rendering"].filter(Boolean).join(" - ")
+      label: "JSON spec + deterministic render",
+      detail: [revision, "AI JSON planning with controlled Python rendering"].filter(Boolean).join(" - ")
     };
   }
 

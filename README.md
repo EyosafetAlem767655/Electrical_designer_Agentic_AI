@@ -17,11 +17,11 @@ Agentic electrical design dashboard and Telegram intake system for floor-by-floo
 
 Vercel environment variable names are case-sensitive. Use `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_BASE_URL` as the primary Telegram values. `INSTALLER_TELEGRAM_BOT_TOKEN`, `INSTALLER_WEBHOOK_BASE_URL`, and `ORCHESTRATOR_URL` are supported fallbacks, but the primary names are preferred.
 
-The generation pipeline uses OpenAI vision/reasoning to create a structured electrical drawing plan, then renders the final schematic with server-side code so symbols, labels, routes, legend text, and BOQ text are exact and readable. OpenAI also runs the background QA check for user requirements, blurry labels, cut symbols, symbol-legend consistency, mandatory fluorescent lamps, manual switches, 220-230V earthed socket outlets, DB/MSU clarity, design accuracy, professionalism, and BOQ countability. If OpenAI QA finds issues and the floor has not already been approved, one correction pass replans the missing/weak parts and updates the code-rendered BOQ.
+The generation pipeline uses OpenAI vision/reasoning to create a strict structured electrical drawing JSON plan, then renders the final schematic with Python/Pillow so symbols, labels, routes, legend text, and BOQ text are exact and readable. OpenAI is not used as a final image renderer.
 
 BOQ generation is produced from the OpenAI structured plan and rendered drawing. Visible lamps, switches, sockets, DB/protection items, emergency/fire/data devices, generator/ATS items, and route allowances are counted from the planned visible symbols; uncertain cable/conduit lengths should be marked for site verification rather than replaced with generic template quantities.
 
-Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. Optional OpenAI overrides are `OPENAI_DESIGN_MODEL` (default `gpt-5.1`) for schematic planning, `OPENAI_REVIEW_MODEL` (default `gpt-5.1`) for QA, and `OPENAI_IMAGE_MODEL` (default `gpt-image-1.5`) for legacy image-edit helpers. The active design artifact is code-rendered from the structured plan, not free-form image generation.
+Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. Optional OpenAI override: `OPENAI_DESIGN_MODEL` (default `gpt-5.1`) for strict JSON plan specification. The job runtime must also provide Python 3 and Pillow for `scripts/render_plan.py`.
 
 After adding or changing Vercel environment variables, redeploy the project so runtime functions receive the new values.
 

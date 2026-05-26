@@ -23,16 +23,16 @@ export const FLOOR_STATUS_LABELS: Record<FloorStatus, string> = {
 };
 
 export const DEFAULT_SYMBOL_LEGEND: SymbolLegendItem[] = [
-  { symbol: "DB", label: "Distribution Board", color: "#2f8178", description: "Floor distribution board" },
-  { symbol: "MSU", label: "Main Supply Unit", color: "#2f8178", description: "Incoming supply from transformer or utility source" },
-  { symbol: "FL", label: "Fluorescent Lamp", color: "#d6a744", description: "Default lighting fixture unless LED is requested" },
-  { symbol: "S", label: "Manual Switch", color: "#8fa37c", description: "Manual lighting switch near entrance/control point" },
-  { symbol: "P", label: "Earthed Socket Outlet", color: "#61788f", description: "220-230V earthed power outlet" },
-  { symbol: "E", label: "Emergency Light", color: "#c95f55", description: "Emergency luminaire or exit lighting" },
-  { symbol: "FA", label: "Fire Alarm", color: "#d66f61", description: "Smoke/heat detector or manual call point" },
-  { symbol: "D", label: "Data/CCTV", color: "#6d5a87", description: "Data, telecom, intercom, or CCTV point" },
-  { symbol: "EV", label: "EV Charger", color: "#5b8fb9", description: "Dedicated electric vehicle charging point" },
-  { symbol: "G", label: "Generator/ATS", color: "#9b6b45", description: "Generator, ATS, or essential supply equipment" }
+  { symbol: "MSU", label: "Main Switch Unit", color: "#111111", description: "Incoming supply from transformer or utility source" },
+  { symbol: "ATS", label: "Automatic Transfer Switch", color: "#d76b18", description: "Utility/generator transfer switch" },
+  { symbol: "G", label: "Generator", color: "#d76b18", description: "Standby generator, 80 kVA when specified or required" },
+  { symbol: "DB", label: "Distribution Board", color: "#1666d8", description: "Floor distribution board" },
+  { symbol: "FL", label: "Fluorescent Light", color: "#1557d6", description: "Default lighting fixture unless changed by the architect" },
+  { symbol: "EL", label: "Emergency Light", color: "#e32020", description: "Emergency luminaire or exit lighting" },
+  { symbol: "SW", label: "Switch", color: "#008b4a", description: "Manual lighting switch near entrance/control point" },
+  { symbol: "SO", label: "Socket Outlet", color: "#6a38b1", description: "220-230V earthed socket outlet" },
+  { symbol: "FA", label: "Fire Alarm Device", color: "#e32020", description: "Smoke/heat detector or manual call point" },
+  { symbol: "CCTV/DATA", label: "CCTV or Data Point", color: "#555555", description: "Data, telecom, intercom, or CCTV point" }
 ];
 
 export const ELECTRICAL_SYSTEM_PROMPT = `You are an expert electrical installation engineer specializing in Ethiopian building standards (EBCS - Ethiopian Building Code Standards) and IEC/EU-style installation practice, not US NEC practice. You design practical, buildable electrical systems for real buildings including power distribution, lighting, socket outlet placement, distribution board sizing, circuit design, emergency lighting, fire alarm, earthing, and low-current systems.

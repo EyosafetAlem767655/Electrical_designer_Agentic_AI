@@ -35,7 +35,9 @@ vi.mock("@/lib/pdf-utils", () => ({
 
 vi.mock("@/lib/telegram", () => ({
   downloadTelegramFile: vi.fn(),
-  sendTelegramMessage: vi.fn()
+  sendTelegramDocument: vi.fn(),
+  sendTelegramMessage: vi.fn(),
+  sendTelegramPhoto: vi.fn()
 }));
 
 vi.mock("@/lib/storage", () => ({
@@ -51,9 +53,8 @@ vi.mock("@/lib/xai", () => ({
   normalizeAnnotations: vi.fn()
 }));
 
-vi.mock("@/lib/openai", () => ({
-  createSchematicRenderPlanWithOpenAI: vi.fn(),
-  evaluateDesignImageWithOpenAI: vi.fn()
+vi.mock("@/lib/openai-plan-analyzer", () => ({
+  createPlanSpecWithOpenAI: vi.fn()
 }));
 
 vi.mock("@/lib/schematic-renderer", () => ({
@@ -116,19 +117,21 @@ describe("job enqueue helpers", () => {
     ).toBe("https://example.com/design-v1.png");
   });
 
-  it("uses OpenAI as a schematic planner and code rendering for image, legend, and BOQ", () => {
+  it("uses OpenAI only for JSON plan specs and Python deterministic rendering for artifacts", () => {
     const source = readFileSync(join(process.cwd(), "lib", "jobs.ts"), "utf8");
     const pipeline = source.slice(source.indexOf("async function processGenerateDesign"));
 
-    expect(source).toContain('const phase = typeof job.payload.phase === "string" ? job.payload.phase : "openai_design"');
     expect(source).toContain("renderProgrammaticElectricalSchematic");
-    expect(source).toContain("createSchematicRenderPlanWithOpenAI");
-    expect(pipeline.indexOf("createSchematicRenderPlanWithOpenAI")).toBeGreaterThan(-1);
-    expect(pipeline.indexOf("renderProgrammaticElectricalSchematic")).toBeGreaterThan(pipeline.indexOf("createSchematicRenderPlanWithOpenAI"));
+    expect(source).toContain("createPlanSpecWithOpenAI");
+    expect(pipeline.indexOf("createPlanSpecWithOpenAI")).toBeGreaterThan(-1);
+    expect(pipeline.indexOf("renderProgrammaticElectricalSchematic")).toBeGreaterThan(pipeline.indexOf("createPlanSpecWithOpenAI"));
     expect(pipeline.indexOf("renderProgrammaticElectricalSchematic")).toBeGreaterThan(-1);
     expect(pipeline.indexOf("uploadProjectFile")).toBeGreaterThan(pipeline.indexOf("renderProgrammaticElectricalSchematic"));
-    expect(pipeline.indexOf('phase: "openai_qa"')).toBeGreaterThan(pipeline.indexOf("renderProgrammaticElectricalSchematic"));
+    expect(source).toContain("sendTelegramPhoto");
+    expect(source).toContain("sendTelegramDocument");
     expect(source).not.toContain("createElectricalDesignWithOpenAI");
+    expect(source).not.toContain("createSchematicRenderPlanWithOpenAI");
+    expect(source).not.toContain("evaluateDesignImageWithOpenAI");
     expect(source).not.toContain("generateDesignPackageWithOpenAI");
     expect(source).not.toContain("improveDesignTextWithOpenAI");
     expect(source).not.toContain("generateDesignDraftImage");
@@ -144,9 +147,9 @@ describe("job enqueue helpers", () => {
         status: "processing",
         attempts: 1,
         error: null,
-        payload: { phase: "openai_design", version: 1 }
+        payload: { phase: "plan_spec", version: 1 }
       })?.label
-    ).toBe("AI-planned schematic + BOQ");
+    ).toBe("JSON spec + deterministic render");
 
     expect(
       describeJobStage({
@@ -154,18 +157,8 @@ describe("job enqueue helpers", () => {
         status: "processing",
         attempts: 1,
         error: null,
-        payload: { phase: "openai_qa", version: 1, designAttempt: 1 }
+        payload: { phase: "plan_spec", designAttempt: 2 }
       })?.label
-    ).toBe("OpenAI QA review");
-
-    expect(
-      describeJobStage({
-        type: "generate_design",
-        status: "processing",
-        attempts: 1,
-        error: null,
-        payload: { phase: "openai_design", designAttempt: 2 }
-      })?.label
-    ).toBe("Programmatic schematic correction");
+    ).toBe("Deterministic plan revision");
   });
 });

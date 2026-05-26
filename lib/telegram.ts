@@ -6,6 +6,7 @@ export type TelegramMessage = {
   chat: { id: number; type: "private" | "group" | "supergroup" | "channel"; title?: string };
   from?: { id: number; is_bot?: boolean; first_name?: string; username?: string };
   text?: string;
+  caption?: string;
   document?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
   photo?: Array<{ file_id: string; file_size?: number; width: number; height: number }>;
 };
@@ -74,6 +75,22 @@ export async function sendTelegramMessage(chatId: number | string, text: string)
     chat_id: chatId,
     text,
     disable_web_page_preview: true
+  });
+}
+
+export async function sendTelegramPhoto(chatId: number | string, photo: string, caption?: string) {
+  return telegramApi<{ message_id: number }>("sendPhoto", {
+    chat_id: chatId,
+    photo,
+    ...(caption ? { caption } : {})
+  });
+}
+
+export async function sendTelegramDocument(chatId: number | string, document: string, caption?: string) {
+  return telegramApi<{ message_id: number }>("sendDocument", {
+    chat_id: chatId,
+    document,
+    ...(caption ? { caption } : {})
   });
 }
 
