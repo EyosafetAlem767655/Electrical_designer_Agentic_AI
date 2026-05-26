@@ -92,7 +92,7 @@ create table files (
   id uuid default gen_random_uuid() primary key,
   project_id uuid references projects(id) on delete cascade,
   floor_id uuid references floors(id),
-  file_type text not null check (file_type in ('architectural_pdf', 'architectural_image', 'floor_screenshot', 'electrical_design', 'final_pdf', 'plan_spec', 'debug_overlay', 'revised_plan_pdf')),
+  file_type text not null check (file_type in ('architectural_pdf', 'architectural_image', 'floor_screenshot', 'electrical_design', 'final_pdf', 'plan_spec', 'debug_overlay')),
   storage_path text not null,
   public_url text,
   original_filename text,

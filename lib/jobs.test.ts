@@ -35,7 +35,6 @@ vi.mock("@/lib/pdf-utils", () => ({
 
 vi.mock("@/lib/telegram", () => ({
   downloadTelegramFile: vi.fn(),
-  sendTelegramDocument: vi.fn(),
   sendTelegramMessage: vi.fn(),
   sendTelegramPhoto: vi.fn()
 }));
@@ -117,7 +116,7 @@ describe("job enqueue helpers", () => {
     ).toBe("https://example.com/design-v1.png");
   });
 
-  it("uses OpenAI only for JSON plan specs and Python deterministic rendering for artifacts", () => {
+  it("uses OpenAI only for JSON plan specs and Python deterministic rendering for image artifacts", () => {
     const source = readFileSync(join(process.cwd(), "lib", "jobs.ts"), "utf8");
     const pipeline = source.slice(source.indexOf("async function processGenerateDesign"));
 
@@ -128,7 +127,9 @@ describe("job enqueue helpers", () => {
     expect(pipeline.indexOf("renderProgrammaticElectricalSchematic")).toBeGreaterThan(-1);
     expect(pipeline.indexOf("uploadProjectFile")).toBeGreaterThan(pipeline.indexOf("renderProgrammaticElectricalSchematic"));
     expect(source).toContain("sendTelegramPhoto");
-    expect(source).toContain("sendTelegramDocument");
+    expect(pipeline).not.toContain("sendTelegramDocument");
+    expect(pipeline).not.toContain("pdfUrl");
+    expect(pipeline).not.toContain("pdfBuffer");
     expect(source).not.toContain("createElectricalDesignWithOpenAI");
     expect(source).not.toContain("createSchematicRenderPlanWithOpenAI");
     expect(source).not.toContain("evaluateDesignImageWithOpenAI");

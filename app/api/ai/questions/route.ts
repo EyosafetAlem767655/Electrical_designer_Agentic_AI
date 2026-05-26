@@ -11,10 +11,14 @@ const schema = z.object({
   context: z.record(z.string(), z.unknown()).default({})
 });
 
+function hasOpenAiKey() {
+  return Boolean(getEnv("OPENAI_API_KEY") ?? getEnv("OPEN_AI_KEY"));
+}
+
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
-    if (!getEnv("XAI_API_KEY")) {
+    if (!hasOpenAiKey()) {
       return NextResponse.json({
         ok: true,
         questions: [

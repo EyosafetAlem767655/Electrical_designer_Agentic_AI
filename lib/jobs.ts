@@ -2,7 +2,7 @@ import { getBaseUrl, getEnv } from "@/lib/env";
 import { convertPdfToPngPages, createFloorPdf, createProjectPackagePdf } from "@/lib/pdf-utils";
 import { renderProgrammaticElectricalSchematic } from "@/lib/schematic-renderer";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { downloadTelegramFile, sendTelegramDocument, sendTelegramMessage, sendTelegramPhoto } from "@/lib/telegram";
+import { downloadTelegramFile, sendTelegramMessage, sendTelegramPhoto } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile } from "@/lib/storage";
 import { createPlanSpecWithOpenAI } from "@/lib/openai-plan-analyzer";
 import {
@@ -381,7 +381,6 @@ async function processGenerateDesign(job: Job) {
     (floor.architectural_image_path ? `data:image/png;base64,${await fetchStorageBase64(floor.architectural_image_path)}` : null);
   if (!sourceImageUrl) throw new Error("Floor has no architectural image source for deterministic plan rendering");
   const imagePath = `projects/${projectId}/floors/${floorId}/design-v${version}.png`;
-  const pdfPath = `projects/${projectId}/floors/${floorId}/revised-plan-v${version}.pdf`;
   const specPath = `projects/${projectId}/floors/${floorId}/plan-spec-v${version}.json`;
   const debugPath = `projects/${projectId}/floors/${floorId}/debug-overlay-v${version}.png`;
   const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
@@ -409,7 +408,6 @@ async function processGenerateDesign(job: Job) {
     spec: planSpec
   });
   const designUrl = await uploadProjectFile(imagePath, renderedDesign.buffer, "image/png");
-  const pdfUrl = await uploadProjectFile(pdfPath, renderedDesign.pdfBuffer, "application/pdf");
   const debugUrl = await uploadProjectFile(debugPath, renderedDesign.debugBuffer, "image/png");
   const specUrl = await uploadProjectFile(specPath, Buffer.from(JSON.stringify(renderedDesign.planSpec, null, 2)), "application/json");
   const boqItems = renderedDesign.boqItems;
@@ -422,7 +420,6 @@ async function processGenerateDesign(job: Job) {
     itemCount: boqItems.length,
     legendCount: renderedDesign.symbolLegend.length,
     imagePath,
-    pdfPath,
     specPath
   });
 
@@ -434,8 +431,6 @@ async function processGenerateDesign(job: Job) {
     version,
     designUrl,
     imagePath,
-    pdfUrl,
-    pdfPath,
     specUrl,
     specPath,
     debugUrl,
@@ -459,8 +454,6 @@ async function saveGeneratedDesign(input: {
   version: number;
   designUrl: string;
   imagePath: string;
-  pdfUrl: string;
-  pdfPath: string;
   specUrl: string;
   specPath: string;
   debugUrl: string;
@@ -479,8 +472,8 @@ async function saveGeneratedDesign(input: {
     version: input.version,
     design_image_url: input.designUrl,
     design_image_path: input.imagePath,
-    design_pdf_url: input.pdfUrl,
-    design_pdf_path: input.pdfPath,
+    design_pdf_url: null,
+    design_pdf_path: null,
     annotations: input.annotations,
     symbol_legend: input.symbolLegend,
     boq_items: input.boqItems,
@@ -501,7 +494,6 @@ async function saveGeneratedDesign(input: {
   if (keep.length) await supabase.from("designs").delete().in("id", keep);
 
   await insertFileRecord({ project_id: input.projectId, floor_id: input.floorId, file_type: "electrical_design", storage_path: input.imagePath, public_url: input.designUrl });
-  await insertFileRecord({ project_id: input.projectId, floor_id: input.floorId, file_type: "revised_plan_pdf", storage_path: input.pdfPath, public_url: input.pdfUrl }, "final_pdf");
   await insertFileRecord({ project_id: input.projectId, floor_id: input.floorId, file_type: "plan_spec", storage_path: input.specPath, public_url: input.specUrl }, "electrical_design");
   await insertFileRecord({ project_id: input.projectId, floor_id: input.floorId, file_type: "debug_overlay", storage_path: input.debugPath, public_url: input.debugUrl }, "electrical_design");
   await supabase.from("floors").update({ status: "design_ready" }).eq("id", input.floorId);
@@ -510,11 +502,10 @@ async function saveGeneratedDesign(input: {
   if (input.project.telegram_chat_id) {
     const message =
       input.version > 1
-        ? `${input.designOwner} has updated the electrical design and BOQ for ${input.floor.floor_name}. The revised PNG and PDF are ready for engineering review.`
-        : `${input.designOwner} has generated the clean electrical plan and BOQ for ${input.floor.floor_name}. The PNG and PDF are ready for engineering review.`;
+        ? `${input.designOwner} has updated the electrical design and BOQ for ${input.floor.floor_name}. The revised image is ready for engineering review. Use the dashboard Save PDF button if you need a PDF.`
+        : `${input.designOwner} has generated the clean electrical plan and BOQ for ${input.floor.floor_name}. The image is ready for engineering review. Use the dashboard Save PDF button if you need a PDF.`;
     await sendTelegramMessage(input.project.telegram_chat_id, message);
     await sendTelegramPhoto(input.project.telegram_chat_id, input.designUrl, `${input.floor.floor_name} revised electrical plan PNG`);
-    await sendTelegramDocument(input.project.telegram_chat_id, input.pdfUrl, `${input.floor.floor_name} revised electrical plan PDF`);
     await supabase.from("conversations").insert({ project_id: input.projectId, floor_id: input.floorId, sender: "bot", message });
   }
 

@@ -16,7 +16,6 @@ type RenderInput = {
 
 export type RenderedSchematic = {
   buffer: Buffer;
-  pdfBuffer: Buffer;
   debugBuffer: Buffer;
   planSpec: PlanSpec;
   symbolLegend: SymbolLegendItem[];
@@ -39,13 +38,15 @@ async function imageBufferFromSource(source: string) {
   return Buffer.from(source, "base64");
 }
 
-function pythonCommand() {
-  return process.platform === "win32" ? "python" : "python3";
+function pythonCommands() {
+  const configured = process.env.PYTHON_RENDERER_COMMAND?.trim();
+  if (configured) return [configured];
+  return process.platform === "win32" ? ["python", "py"] : ["python3", "python"];
 }
 
-function runPythonRenderer(args: string[]) {
+function runPythonCommand(command: string, args: string[]) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(pythonCommand(), args, {
+    const child = spawn(command, args, {
       cwd: process.cwd(),
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true
@@ -57,9 +58,22 @@ function runPythonRenderer(args: string[]) {
     child.on("error", reject);
     child.on("exit", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`Python plan renderer failed with exit ${code}: ${stderr.trim()}`));
+      else reject(new Error(`${command} failed with exit ${code}: ${stderr.trim()}`));
     });
   });
+}
+
+async function runPythonRenderer(args: string[]) {
+  const errors: string[] = [];
+  for (const command of pythonCommands()) {
+    try {
+      await runPythonCommand(command, args);
+      return;
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  throw new Error(`Python plan renderer could not start. Tried ${pythonCommands().join(", ")}. Errors: ${errors.join(" | ")}`);
 }
 
 export function programmaticLegend(): SymbolLegendItem[] {
@@ -75,7 +89,6 @@ export async function renderProgrammaticElectricalSchematic(input: RenderInput):
   const basePath = join(tempDir, "base-plan.png");
   const specPath = join(tempDir, "plan-spec.json");
   const pngPath = join(tempDir, "revised_plan.png");
-  const pdfPath = join(tempDir, "revised_plan.pdf");
   const debugPath = join(tempDir, "debug_overlay.png");
   try {
     await writeFile(basePath, await imageBufferFromSource(input.sourceImageUrl));
@@ -95,10 +108,9 @@ export async function renderProgrammaticElectricalSchematic(input: RenderInput):
       ),
       "utf8"
     );
-    await runPythonRenderer(["scripts/render_plan.py", specPath, basePath, pngPath, pdfPath, debugPath]);
+    await runPythonRenderer(["scripts/render_plan.py", specPath, basePath, pngPath, debugPath]);
     return {
       buffer: await readFile(pngPath),
-      pdfBuffer: await readFile(pdfPath),
       debugBuffer: await readFile(debugPath),
       planSpec: input.spec,
       symbolLegend: planSymbolLegend(input.spec),

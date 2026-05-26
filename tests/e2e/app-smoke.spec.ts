@@ -22,11 +22,11 @@ test("demo project exposes guarded delete control", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Export BOQ PDF/i })).toBeVisible();
 });
 
-test("project chat page degrades without xAI credentials", async ({ page }) => {
+test("project chat page degrades without OpenAI credentials", async ({ page }) => {
   await page.goto("/project/demo-project/chat");
   await page.getByPlaceholder("Ask about the current design...").fill("What is the current floor status?");
   await page.getByRole("button", { name: /Send/i }).click();
-  await expect(page.getByText(/xAI is not configured locally|Nova Tower Prototype/i)).toBeVisible();
+  await expect(page.getByText(/OpenAI is not configured locally|Nova Tower Prototype/i)).toBeVisible();
 });
 
 test("project chat renders assistant markdown without raw asterisks", async ({ page }) => {

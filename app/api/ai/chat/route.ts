@@ -13,16 +13,20 @@ const schema = z.object({
   question: z.string().min(2)
 });
 
+function hasOpenAiKey() {
+  return Boolean(getEnv("OPENAI_API_KEY") ?? getEnv("OPEN_AI_KEY"));
+}
+
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
     const bundle = await getProjectBundle(input.projectId);
     if (!bundle) return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
 
-    if (!getEnv("XAI_API_KEY")) {
+    if (!hasOpenAiKey()) {
       return NextResponse.json({
         ok: true,
-        answer: `xAI is not configured locally. Project ${bundle.project.project_name} has ${bundle.floors.length} floor records and ${bundle.designs.length} design records available for chat once XAI_API_KEY is set.`
+        answer: `OpenAI is not configured locally. Project ${bundle.project.project_name} has ${bundle.floors.length} floor records and ${bundle.designs.length} design records available for chat once OPENAI_API_KEY is set.`
       });
     }
 

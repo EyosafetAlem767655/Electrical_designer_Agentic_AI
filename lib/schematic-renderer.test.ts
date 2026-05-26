@@ -16,7 +16,7 @@ function testPlanDataUrl() {
 }
 
 describe("deterministic Python plan renderer", () => {
-  it("renders PNG, PDF, debug overlay, legend, and BOQ from the same spec", async () => {
+  it("renders PNG, debug overlay, legend, and BOQ from the same spec", async () => {
     const spec = samplePlanSpec();
     const output = await renderProgrammaticElectricalSchematic({
       sourceImageUrl: testPlanDataUrl(),
@@ -27,7 +27,6 @@ describe("deterministic Python plan renderer", () => {
     });
 
     expect(output.buffer.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
-    expect(output.pdfBuffer.subarray(0, 4).toString()).toBe("%PDF");
     expect(output.debugBuffer.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
     expect(output.symbolLegend.map((item) => item.symbol)).toEqual(expect.arrayContaining(["MSU", "ATS", "G", "DB", "FL", "EL", "SW", "SO", "FA", "CCTV/DATA"]));
     expect(output.boqItems.find((item) => item.item === "Fluorescent Light")?.quantity).toBe(2);

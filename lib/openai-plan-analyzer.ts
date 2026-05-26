@@ -21,7 +21,7 @@ function requireOpenAiKey() {
 }
 
 function model() {
-  return getEnv("OPENAI_DESIGN_MODEL") ?? "gpt-5.1";
+  return getEnv("OPENAI_DESIGN_MODEL") ?? "gpt-5.5";
 }
 
 function outputText(payload: ResponsesPayload) {

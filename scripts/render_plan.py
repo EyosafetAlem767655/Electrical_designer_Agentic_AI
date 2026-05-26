@@ -154,7 +154,7 @@ def wrap(draw, text, x, y, max_width, line_height, fnt, fill="#222222"):
 
 
 def main():
-    spec_path, base_path, png_path, pdf_path, debug_path = map(Path, sys.argv[1:6])
+    spec_path, base_path, png_path, debug_path = map(Path, sys.argv[1:5])
     payload = json.loads(spec_path.read_text(encoding="utf-8"))
     spec = payload["spec"]
     meta = payload.get("meta", {})
@@ -259,11 +259,10 @@ def main():
     dbg.text((plan_x + 8, plan_y + 8), "DEBUG PLAN BOUNDARY", fill="#ff00ff", font=FONT_14)
 
     sheet.save(png_path)
-    sheet.save(pdf_path, "PDF", resolution=150)
     debug.save(debug_path)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 6:
-        raise SystemExit("Usage: render_plan.py spec.json base.png revised.png revised.pdf debug.png")
+    if len(sys.argv) != 5:
+        raise SystemExit("Usage: render_plan.py spec.json base.png revised.png debug.png")
     main()

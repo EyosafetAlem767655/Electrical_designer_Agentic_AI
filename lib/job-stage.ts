@@ -19,13 +19,13 @@ export function describeJobStage(job?: Pick<Job, "type" | "status" | "payload" |
     if (designAttempt && designAttempt > 1) {
       return {
         label: "Deterministic plan revision",
-        detail: [revision, `attempt ${designAttempt}`, "validating JSON spec and rendering PNG/PDF"].filter(Boolean).join(" - ")
+        detail: [revision, `attempt ${designAttempt}`, "validating JSON spec and rendering image output"].filter(Boolean).join(" - ")
       };
     }
     if (phase === "plan_spec" || !phase) {
       return {
         label: "JSON spec + deterministic render",
-        detail: [revision, job.type === "revision_design" ? "OpenAI JSON revision, Python-rendered PNG/PDF, structured legend, and BOQ" : "OpenAI JSON spec, Python-rendered PNG/PDF, structured legend, and BOQ"].filter(Boolean).join(" - ")
+        detail: [revision, job.type === "revision_design" ? "OpenAI JSON revision, Python-rendered image, structured legend, and BOQ" : "OpenAI JSON spec, Python-rendered image, structured legend, and BOQ"].filter(Boolean).join(" - ")
       };
     }
     return {

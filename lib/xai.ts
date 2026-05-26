@@ -1,44 +1,60 @@
 import { ELECTRICAL_SYSTEM_PROMPT } from "@/lib/constants";
-import { getEnv, requireEnv } from "@/lib/env";
+import { getEnv } from "@/lib/env";
 import type { BoqItem, DesignAnnotation, SymbolLegendItem } from "@/types";
 
 type ChatMessage =
   | { role: "system" | "assistant"; content: string }
   | { role: "user"; content: string | Array<Record<string, unknown>> };
 
-type XaiChatResponse = {
-  choices?: Array<{ message?: { content?: string } }>;
+type OpenAiResponsePayload = {
+  output_text?: string;
+  output?: Array<{ content?: Array<{ text?: string }> }>;
+  error?: { message?: string };
 };
 
-const DEFAULT_XAI_TIMEOUT_MS = 240_000;
+const OPENAI_TIMEOUT_MS = 240_000;
+const RETRY_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504]);
+
+function requireOpenAiKey() {
+  const key = getEnv("OPENAI_API_KEY") ?? getEnv("OPEN_AI_KEY");
+  if (!key) throw new Error("Missing required environment variable: OPENAI_API_KEY or OPEN_AI_KEY");
+  return key;
+}
 
 function model(name: string, fallback: string) {
   return getEnv(name) ?? fallback;
 }
 
-async function xaiFetch<T>(path: string, body: Record<string, unknown>, options: { timeoutMs?: number } = {}) {
-  const response = await fetch(`https://api.x.ai/v1/${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${requireEnv("XAI_API_KEY")}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_XAI_TIMEOUT_MS)
-  });
-  const text = await response.text();
-  let payload = {} as T & { error?: { message?: string } };
-  try {
-    payload = text ? (JSON.parse(text) as T & { error?: { message?: string } }) : payload;
-  } catch {
-    payload = {} as T & { error?: { message?: string } };
-  }
-  if (!response.ok) throw new Error(payload.error?.message ? `xAI request failed: ${response.status} - ${payload.error.message}` : `xAI request failed: ${response.status}`);
-  return payload;
+function outputText(payload: OpenAiResponsePayload) {
+  if (payload.output_text?.trim()) return payload.output_text.trim();
+  return payload.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? "").join("\n").trim() ?? "";
 }
 
-function firstText(payload: XaiChatResponse) {
-  return payload.choices?.[0]?.message?.content?.trim() ?? "";
+async function openAiResponses(body: Record<string, unknown>, label: string) {
+  let lastError = "";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${requireOpenAiKey()}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
+    });
+    const text = await response.text();
+    let payload: OpenAiResponsePayload = {};
+    try {
+      payload = text ? (JSON.parse(text) as OpenAiResponsePayload) : {};
+    } catch {
+      payload = {};
+    }
+    if (response.ok) return outputText(payload);
+    lastError = payload.error?.message ?? text;
+    if (!RETRY_STATUSES.has(response.status) || attempt === 2) throw new Error(`${label} failed: ${response.status} - ${lastError}`);
+    await new Promise((resolve) => setTimeout(resolve, 750 * (attempt + 1)));
+  }
+  throw new Error(`${label} failed: ${lastError}`);
 }
 
 function extractJson<T>(text: string, fallback: T): T {
@@ -56,42 +72,72 @@ function extractJson<T>(text: string, fallback: T): T {
   }
 }
 
-export async function chatCompletion(messages: ChatMessage[], temperature = 0.5) {
-  const payload = await xaiFetch<XaiChatResponse>("chat/completions", {
-    model: model("XAI_CHAT_MODEL", "grok-4.3"),
-    messages,
-    temperature
+function toOpenAiContent(content: ChatMessage["content"]) {
+  if (typeof content === "string") return [{ type: "input_text", text: content }];
+  return content.map((item) => {
+    if (item.type === "image_url") {
+      const image = item.image_url as { url?: string; detail?: string };
+      return { type: "input_image", image_url: image.url, detail: image.detail ?? "high" };
+    }
+    if (item.type === "text") return { type: "input_text", text: String(item.text ?? "") };
+    return { type: "input_text", text: JSON.stringify(item) };
   });
-  return firstText(payload);
+}
+
+export async function chatCompletion(messages: ChatMessage[], temperature = 0.5) {
+  const input = messages.map((message) => ({
+    role: message.role,
+    content: toOpenAiContent(message.content)
+  }));
+  return openAiResponses(
+    {
+      model: model("OPENAI_ANALYSIS_MODEL", model("OPENAI_DESIGN_MODEL", "gpt-5.5")),
+      reasoning: { effort: "medium" },
+      temperature,
+      text: { verbosity: "medium" },
+      input
+    },
+    "OpenAI analysis chat"
+  );
 }
 
 export async function analyzeFloorPlan(imageBase64: string, context: Record<string, unknown>) {
   const imageUrl = /^https?:\/\//i.test(imageBase64) || imageBase64.startsWith("data:")
     ? imageBase64
     : `data:image/png;base64,${imageBase64}`;
-  const response = await xaiFetch<XaiChatResponse>("chat/completions", {
-    model: model("XAI_VISION_MODEL", "grok-4"),
-    temperature: 0.3,
-    messages: [
-      { role: "system", content: ELECTRICAL_SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: [
-          { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
-          {
-            type: "text",
-            text: `Analyze this architectural floor plan for a real-world Ethiopian/EBCS + IEC electrical installation. Return strict JSON only with keys rooms, load_assumptions, main_supply_source, lighting_plan, socket_outlet_plan, switch_plan, db_recommendation, circuit_strategy, cable_route_strategy, emergency_systems, fire_alarm_plan, data_cctv_plan, unclear_items, questions, annotations, symbol_legend, electrician_notes.
+  const response = await openAiResponses(
+    {
+      model: model("OPENAI_ANALYSIS_MODEL", model("OPENAI_DESIGN_MODEL", "gpt-5.5")),
+      reasoning: { effort: "high" },
+      text: {
+        verbosity: "low",
+        format: { type: "json_object" }
+      },
+      input: [
+        {
+          role: "system",
+          content: [{ type: "input_text", text: ELECTRICAL_SYSTEM_PROMPT }]
+        },
+        {
+          role: "user",
+          content: [
+            { type: "input_image", image_url: imageUrl, detail: "high" },
+            {
+              type: "input_text",
+              text: `Analyze this architectural floor plan for Ethiopian/EBCS + IEC electrical installation. Return JSON only with keys rooms, load_assumptions, main_supply_source, lighting_plan, socket_outlet_plan, switch_plan, db_recommendation, circuit_strategy, cable_route_strategy, emergency_systems, fire_alarm_plan, data_cctv_plan, unclear_items, questions, annotations, symbol_legend, electrician_notes.
 
-Use fluorescent lamps, manual switches, and 220-230V earthed socket outlets as defaults unless the architect explicitly changed them. Ask about the utility incomer/MSU location when unclear.
+Use fluorescent lamps, manual switches, and 220-230V earthed socket outlets as defaults unless explicitly changed. Ask about the utility incomer/MSU location when unclear.
 
 Context: ${JSON.stringify(context)}`
-          }
-        ]
-      }
-    ]
-  });
+            }
+          ]
+        }
+      ]
+    },
+    "OpenAI floor-plan analysis"
+  );
 
-  return extractJson(firstText(response), {
+  return extractJson(response, {
     rooms: [],
     load_assumptions: [],
     main_supply_source: "",

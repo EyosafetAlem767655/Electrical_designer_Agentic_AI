@@ -21,7 +21,7 @@ The generation pipeline uses OpenAI vision/reasoning to create a strict structur
 
 BOQ generation is produced from the OpenAI structured plan and rendered drawing. Visible lamps, switches, sockets, DB/protection items, emergency/fire/data devices, generator/ATS items, and route allowances are counted from the planned visible symbols; uncertain cable/conduit lengths should be marked for site verification rather than replaced with generic template quantities.
 
-Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. Optional OpenAI override: `OPENAI_DESIGN_MODEL` (default `gpt-5.1`) for strict JSON plan specification. The job runtime must also provide Python 3 and Pillow for `scripts/render_plan.py`.
+Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. Optional OpenAI overrides: `OPENAI_DESIGN_MODEL` and `OPENAI_ANALYSIS_MODEL` default to `gpt-5.5`. The job runtime must also provide Python 3 and Pillow for `scripts/render_plan.py`; set `PYTHON_RENDERER_COMMAND` if the executable is not on the default `python3`/`python` path.
 
 After adding or changing Vercel environment variables, redeploy the project so runtime functions receive the new values.
 
