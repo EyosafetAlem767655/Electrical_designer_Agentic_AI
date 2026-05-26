@@ -84,7 +84,7 @@ function toOpenAiContent(content: ChatMessage["content"]) {
   });
 }
 
-export async function chatCompletion(messages: ChatMessage[], temperature = 0.5) {
+export async function chatCompletion(messages: ChatMessage[], _temperature = 0.5) {
   const input = messages.map((message) => ({
     role: message.role,
     content: toOpenAiContent(message.content)
@@ -93,7 +93,6 @@ export async function chatCompletion(messages: ChatMessage[], temperature = 0.5)
     {
       model: model("OPENAI_ANALYSIS_MODEL", model("OPENAI_DESIGN_MODEL", "gpt-5.5")),
       reasoning: { effort: "medium" },
-      temperature,
       text: { verbosity: "medium" },
       input
     },
