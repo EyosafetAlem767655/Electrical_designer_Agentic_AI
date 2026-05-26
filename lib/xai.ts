@@ -85,6 +85,7 @@ function toOpenAiContent(content: ChatMessage["content"]) {
 }
 
 export async function chatCompletion(messages: ChatMessage[], _temperature = 0.5) {
+  void _temperature;
   const input = messages.map((message) => ({
     role: message.role,
     content: toOpenAiContent(message.content)

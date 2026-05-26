@@ -193,23 +193,87 @@ async function renderNodeFallback(input: RenderInput, baseBuffer: Buffer): Promi
     planY + Math.max(0, Math.min(imageH, y)) / Math.max(1, imageH) * drawH
   ];
 
+  const haloRoute = (points: [number, number][], kind: keyof typeof routeStyles) => {
+    const style = routeStyles[kind] ?? routeStyles.main_distribution;
+    for (const pass of ["halo", "color"] as const) {
+      ctx.strokeStyle = pass === "halo" ? "#ffffff" : style.color;
+      ctx.lineWidth = style.width + (pass === "halo" ? 5 : 0);
+      ctx.setLineDash(style.dash ?? []);
+      ctx.beginPath();
+      points.forEach(([x, y], index) => {
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  };
+
+  const equipment = new Map<string, [number, number]>();
+  for (const item of input.spec.equipment) equipment.set(item.type, tx(item.location));
+  const allDevicePoints = input.spec.devices.map((item) => tx(item.location));
+  const center: [number, number] = allDevicePoints.length
+    ? [allDevicePoints.reduce((sum, point) => sum + point[0], 0) / allDevicePoints.length, allDevicePoints.reduce((sum, point) => sum + point[1], 0) / allDevicePoints.length]
+    : [planX + drawW * 0.5, planY + drawH * 0.3];
+  const db = equipment.get("DB") ?? center;
+  const msu = equipment.get("MSU") ?? [db[0] - 120, db[1] - 80] as [number, number];
+  const ats = equipment.get("ATS") ?? [db[0] - 40, db[1] - 80] as [number, number];
+  const gen = equipment.get("G");
+
+  const byType = new Map<string, [number, number][]>();
+  for (const item of input.spec.devices) {
+    const values = byType.get(item.type) ?? [];
+    values.push(tx(item.location));
+    byType.set(item.type, values);
+  }
+
+  const clustersByY = (points: [number, number][]) => {
+    const ordered = [...points].sort((a, b) => a[1] - b[1]);
+    const clusters: [number, number][][] = [];
+    for (const point of ordered) {
+      const last = clusters.at(-1);
+      const avgY = last ? last.reduce((sum, item) => sum + item[1], 0) / last.length : 0;
+      if (!last || Math.abs(point[1] - avgY) > 92) clusters.push([point]);
+      else last.push(point);
+    }
+    return clusters;
+  };
+
+  const drawBus = (points: [number, number][], kind: keyof typeof routeStyles, prefix: string) => {
+    clustersByY(points).forEach((cluster, index) => {
+      const y = cluster.reduce((sum, point) => sum + point[1], 0) / cluster.length;
+      const xs = cluster.map((point) => point[0]);
+      const left = Math.min(...xs) - 28;
+      const right = Math.max(...xs) + 28;
+      const endX = db[0] > right ? left : right;
+      haloRoute([db, [db[0], y], [endX, y]], kind);
+      drawNodeLabel(ctx, `${prefix}${index + 1}`, Math.min(Math.max(db[0], left), right) + 8, y - 22, routeStyles[kind].color, "left");
+      for (const [x, py] of cluster) {
+        if (Math.abs(py - y) > 20) haloRoute([[x, y], [x, py]], kind);
+      }
+    });
+  };
+
+  const drawLoop = (points: [number, number][], kind: keyof typeof routeStyles, labelText: string) => {
+    if (!points.length) return;
+    const ordered = [...points].sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+    haloRoute([db, [ordered[0][0], db[1]], ...ordered], kind);
+    drawNodeLabel(ctx, labelText, ordered[Math.floor(ordered.length / 2)][0] + 8, ordered[Math.floor(ordered.length / 2)][1] - 22, routeStyles[kind].color, "left");
+  };
+
   ctx.save();
   ctx.beginPath();
   ctx.rect(planX, planY, drawW, drawH);
   ctx.clip();
-  for (const route of input.spec.routes) {
-    const style = routeStyles[route.type] ?? routeStyles.main_distribution;
-    ctx.strokeStyle = style.color;
-    ctx.lineWidth = style.width;
-    ctx.setLineDash(style.dash ?? []);
-    ctx.beginPath();
-    route.points.map(tx).forEach(([x, y], index) => {
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
+  haloRoute([msu, [ats[0], msu[1]], ats], "main_distribution");
+  haloRoute([ats, [db[0], ats[1]], db], "main_distribution");
+  if (gen) haloRoute([gen, [gen[0], ats[1]], ats], "generator_backup");
+  drawBus((byType.get("FL") ?? []).slice(0, 42), "lighting", "L");
+  drawBus((byType.get("SO") ?? []).slice(0, 22), "power_socket", "P");
+  drawBus((byType.get("SW") ?? []).slice(0, 16), "switch_control", "SW");
+  drawLoop((byType.get("EL") ?? []).slice(0, 14), "emergency_lighting", "E1");
+  drawLoop((byType.get("FA") ?? []).slice(0, 14), "fire_alarm", "FA1");
+  drawLoop((byType.get("CCTV/DATA") ?? []).slice(0, 12), "cctv_data", "DATA");
   for (const item of [...input.spec.equipment, ...input.spec.devices]) {
     const [x, y] = tx(item.location);
     drawNodeSymbol(ctx, item.type, item.label, x, y);

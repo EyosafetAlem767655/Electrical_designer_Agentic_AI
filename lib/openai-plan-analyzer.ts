@@ -147,11 +147,21 @@ The renderer, not the model, will draw the final technical plan. Do not describe
 
 Allowed symbols only: ${SYMBOL_CODES.join(", ")}.
 Required defaults unless explicitly changed: FL fluorescent lights, SW manual switches, SO 220V earthed socket outlets.
-Lighting routes must be blue. Emergency lighting routes must be red. Do not mix main lighting and emergency lighting.
+Routes policy:
+- Do not create point-to-point branch wiring for every symbol.
+- Return only major route intent: MSU -> ATS, G -> ATS, ATS -> DB, and one high-level trunk per system when useful.
+- Keep routes array under 10 items total.
+- The Python renderer will generate readable orthogonal trunk-and-branch circuits by layer.
+- Lighting routes must be blue. Emergency lighting routes must be red. Do not mix main lighting and emergency lighting.
 Do not design anything outside the floor boundary. If room identity is uncertain, use a clean label with VERIFY warning.
 Do not invent labels such as S5, BB, EB, OO, T, random numbers, or EV unless defined and requested. EV must not appear unless explicitly requested.
 Main distribution should be traceable: utility incomer -> MSU -> ATS -> DB. If generator backup is requested or implied, show G / 80 kVA in storage/generator area and route G -> ATS.
 Legend and BOQ must include only visible symbols and BOQ quantities must equal the visible equipment/devices.
+Device density policy:
+- For basement parking, use enough FL fixtures for coverage but avoid excessive symbols; prefer a clean grid along drive aisles and parking rows.
+- Place SW only at control points/entrances, not beside every fixture.
+- Place SO at practical maintenance/service/utility points, not beside every bay.
+- Use VERIFY warnings instead of pretending uncertain rooms or equipment are confirmed.
 
 Project: ${input.projectName}
 Floor: ${input.floorName}
