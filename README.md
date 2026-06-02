@@ -2,6 +2,15 @@
 
 Agentic electrical design dashboard and Telegram intake system for floor-by-floor building electrical installation design.
 
+## Architecture
+
+This repo contains two services:
+
+- **`/` (Next.js, Vercel)** — Frontend dashboard + architect-facing web app. Reads project state directly from Supabase for realtime UI.
+- **`/backend` (Python FastAPI)** — Agent orchestration: Telegram bot state machine, OpenAI plan-spec generation, deterministic Pillow renderer, Supabase persistence, job queue. See [`backend/README.md`](backend/README.md).
+
+The Python backend replaces the legacy TypeScript orchestration under `lib/` and `app/api/`. The legacy code is kept for now as reference; once the frontend proxies its API calls to `BACKEND_BASE_URL`, the `lib/*.ts` orchestration files can be removed.
+
 ## Local Setup
 
 1. Copy `.env.example` to `.env.local` and fill in real values.
