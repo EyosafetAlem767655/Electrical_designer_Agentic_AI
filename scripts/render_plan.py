@@ -18,7 +18,18 @@ SYMBOLS = {
     "SO": ("Socket Outlet", "#6a38b1"),
     "FA": ("Fire Alarm", "#c62828"),
     "CCTV/DATA": ("CCTV/Data", "#555555"),
+    "AC": ("Air Conditioner", "#0f766e"),
+    "EF": ("Extractor Fan", "#4b5563"),
+    "WH": ("Water Heater", "#0ea5e9"),
+    "PUMP": ("Pump", "#2563eb"),
+    "COOKER": ("Cooker", "#b45309"),
+    "EV": ("EV Charger", "#16a34a"),
+    "LIFT": ("Lift", "#7c3aed"),
+    "MACHINE": ("Machine Load", "#be123c"),
+    "EQUIP": ("Equipment Point", "#64748b"),
 }
+
+POWER_LOAD_SYMBOLS = {"AC", "EF", "WH", "PUMP", "COOKER", "EV", "LIFT", "MACHINE", "EQUIP"}
 
 ROUTE_STYLE = {
     "main_distribution": ("#111111", 7, None),
@@ -38,6 +49,15 @@ DEVICE_LIMITS = {
     "SO": 22,
     "FA": 14,
     "CCTV/DATA": 12,
+    "AC": 18,
+    "EF": 18,
+    "WH": 12,
+    "PUMP": 12,
+    "COOKER": 10,
+    "EV": 12,
+    "LIFT": 8,
+    "MACHINE": 18,
+    "EQUIP": 18,
 }
 
 
@@ -129,6 +149,8 @@ def clean_label(symbol, raw, index):
         return f"{symbol}-{index}"
     if symbol == "CCTV/DATA":
         return f"DATA-{index}"
+    if symbol in POWER_LOAD_SYMBOLS:
+        return f"{symbol}-{index}"
     if symbol == "G":
         return "G / 80 kVA"
     return symbol
@@ -160,9 +182,11 @@ def draw_symbol(draw, symbol, xy, label_text=None, small=False):
         draw.line([(x, y - r), (x + r, y + r), (x - r, y + r), (x, y - r)], fill=color, width=3)
     elif symbol == "CCTV/DATA":
         label(draw, (x, y), "DATA", color, fnt=FONT_10 if small else FONT_12)
+    elif symbol in POWER_LOAD_SYMBOLS:
+        label(draw, (x, y), symbol, color, fnt=FONT_10 if small else FONT_12)
     else:
         label(draw, (x, y), "G / 80 kVA" if symbol == "G" else symbol, color, fnt=FONT_12 if small else FONT_16)
-    if label_text and not small and symbol in {"MSU", "ATS", "G", "DB"}:
+    if label_text and not small and (symbol in {"MSU", "ATS", "G", "DB"} or symbol in POWER_LOAD_SYMBOLS):
         label(draw, (x + 22, y + 22), label_text, color, anchor="left", fnt=FONT_12)
 
 
@@ -364,7 +388,10 @@ def main():
     draw_distribution(odraw, eq)
     db = eq["DB"]
     draw_bus_layer(odraw, point_groups["FL"], db, "lighting", "L")
-    draw_bus_layer(odraw, point_groups["SO"], db, "power_socket", "P")
+    power_points = list(point_groups["SO"])
+    for symbol in sorted(POWER_LOAD_SYMBOLS):
+        power_points.extend(point_groups[symbol])
+    draw_bus_layer(odraw, power_points, db, "power_socket", "P")
     draw_bus_layer(odraw, point_groups["SW"], db, "switch_control", "SW")
     draw_loop_layer(odraw, point_groups["EL"], db, "emergency_lighting", "E1")
     draw_loop_layer(odraw, point_groups["FA"], db, "fire_alarm", "FA1")

@@ -6,6 +6,7 @@ export function samplePlanSpec(): PlanSpec {
   return normalizePlanSpec({
     project: { title: "Basement Electrical Layout", drawing_type: "schematic_overlay", notes: ["Default Ethiopian/IEC assumptions"] },
     base_plan: { image_width: 1000, image_height: 700, scale_known: false },
+    boundary_polygon: [[20, 20], [980, 20], [980, 680], [20, 680]],
     rooms: [{ id: "room_001", label: "Electrical Meter Room", bbox: [50, 50, 260, 190], confidence: 0.9, notes: [] }],
     equipment: [
       { id: "msu_001", type: "MSU", label: "MSU", location: [90, 100], room_id: "room_001", notes: ["Main incoming supply"] },
@@ -20,7 +21,9 @@ export function samplePlanSpec(): PlanSpec {
       { id: "sw_001", type: "SW", label: "SW", location: [330, 190], circuit_id: "L1", room_id: null, switch_id: null },
       { id: "so_001", type: "SO", label: "SO-1", location: [720, 310], circuit_id: "P1", room_id: null, switch_id: null },
       { id: "fa_001", type: "FA", label: "FA", location: [620, 420], circuit_id: "FA1", room_id: null, switch_id: null },
-      { id: "cd_001", type: "CCTV/DATA", label: "DATA", location: [840, 220], circuit_id: "CD1", room_id: null, switch_id: null }
+      { id: "cd_001", type: "CCTV/DATA", label: "DATA", location: [840, 220], circuit_id: "CD1", room_id: null, switch_id: null },
+      { id: "ac_001", type: "AC", label: "AC-1", location: [760, 430], circuit_id: "M1", room_id: null, switch_id: null },
+      { id: "ev_001", type: "EV", label: "EV-1", location: [880, 430], circuit_id: "EV1", room_id: null, switch_id: null }
     ],
     routes: [
       { id: "r_001", type: "main_distribution", from: "MSU", to: "ATS", points: [[90, 100], [190, 100]], label: "MSU -> ATS", style: "main_supply" },
@@ -40,14 +43,14 @@ describe("plan schema and symbol inventory", () => {
     const spec = samplePlanSpec();
     validatePlanSymbolConsistency(spec);
 
-    expect(planSymbolLegend(spec).map((item) => item.symbol)).toEqual(expect.arrayContaining(["MSU", "ATS", "G", "DB", "FL", "EL", "SW", "SO", "FA", "CCTV/DATA"]));
+    expect(planSymbolLegend(spec).map((item) => item.symbol)).toEqual(expect.arrayContaining(["MSU", "ATS", "G", "DB", "FL", "EL", "SW", "SO", "FA", "CCTV/DATA", "AC", "EV"]));
     expect(planBoqItems(spec).find((item) => item.item === "Fluorescent Light")?.quantity).toBe(2);
     expect(spec.boq.find((item) => item.symbol === "FL")?.quantity).toBe(2);
   });
 
   it("keeps the standard dictionary aligned with allowed symbols", () => {
     expect(Object.keys(SYMBOL_DICTIONARY).sort()).toEqual([...SYMBOL_CODES].sort());
-    expect(SYMBOL_CODES).not.toContain("EV" as never);
+    expect(SYMBOL_CODES).toContain("EV");
   });
 
   it("rejects undefined symbols", () => {

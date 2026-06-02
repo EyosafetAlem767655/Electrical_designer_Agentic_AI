@@ -1,7 +1,7 @@
 alter table floors drop constraint if exists floors_status_check;
 alter table floors
   add constraint floors_status_check
-  check (status in ('pending', 'pdf_received', 'image_received', 'analyzing', 'questions_sent', 'designing', 'design_ready', 'revision_requested', 'approved'));
+  check (status in ('pending', 'pdf_received', 'image_received', 'analyzing', 'marking_review', 'questions_sent', 'designing', 'design_ready', 'revision_requested', 'approved'));
 
 alter table files drop constraint if exists files_file_type_check;
 alter table files

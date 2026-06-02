@@ -33,6 +33,7 @@ export const planSpecSchema = z
         scale_known: z.boolean().default(false)
       })
       .strict(),
+    boundary_polygon: z.array(pointSchema).min(3).max(24).default([]),
     rooms: z
       .array(
         z
@@ -135,7 +136,7 @@ export type RouteType = z.infer<typeof routeTypeSchema>;
 export const planSpecJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["project", "base_plan", "rooms", "equipment", "devices", "routes", "circuits", "legend", "boq", "warnings"],
+  required: ["project", "base_plan", "boundary_polygon", "rooms", "equipment", "devices", "routes", "circuits", "legend", "boq", "warnings"],
   properties: {
     project: {
       type: "object",
@@ -156,6 +157,12 @@ export const planSpecJsonSchema = {
         image_height: { type: "integer" },
         scale_known: { type: "boolean" }
       }
+    },
+    boundary_polygon: {
+      type: "array",
+      minItems: 3,
+      maxItems: 24,
+      items: { type: "array", minItems: 2, maxItems: 2, items: { type: "number" } }
     },
     rooms: {
       type: "array",

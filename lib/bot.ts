@@ -184,6 +184,39 @@ async function currentFloor(projectId: string, currentFloorIndex: number) {
   return data as Floor;
 }
 
+async function projectFloors(projectId: string) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("floors").select("*").eq("project_id", projectId).order("floor_number", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as Floor[];
+}
+
+async function beginFloorImageIntake(project: Project, session: BotSession, chatId: number) {
+  const supabase = getSupabaseAdmin();
+  const floors = await projectFloors(project.id);
+  if (!floors.length) {
+    const updated = await updateSession(session.id, {
+      project_id: project.id,
+      current_floor_id: null,
+      state: "AWAITING_ADMIN_FLOORS",
+      telegram_chat_id: chatId
+    });
+    await botReply(chatId, project.id, null, "You are verified, but this project has no dashboard-created floor sequence yet. Please ask the admin to add the floors, then send /start again from the project link.");
+    return updated;
+  }
+
+  const current = floors[Math.min(project.current_floor ?? 0, floors.length - 1)];
+  await supabase.from("projects").update({ status: "in_progress", current_floor: current.floor_number }).eq("id", project.id);
+  const updated = await updateSession(session.id, {
+    project_id: project.id,
+    current_floor_id: current.id,
+    state: "AWAITING_IMAGE",
+    telegram_chat_id: chatId
+  });
+  await botReply(chatId, project.id, current.id, `You're verified for ${project.project_name}. Please send a clear PNG or JPG image for ${current.floor_name}. Add any design guides or constraints as the image caption.`);
+  return updated;
+}
+
 function imageAttachment(message: TelegramMessage) {
   const photo = message.photo?.slice().sort((a, b) => (b.width * b.height || b.file_size || 0) - (a.width * a.height || a.file_size || 0))[0];
   if (photo?.file_id) {
@@ -271,14 +304,18 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
     }
 
     await verifyProject(project, message, session);
-    session = await updateSession(session.id, { project_id: project.id, state: "COLLECTING_PURPOSE", telegram_chat_id: message.chat.id });
-    await botReply(message.chat.id, project.id, null, `Great! You're verified for project ${project.project_name}. What is the primary purpose of this building? For example: residential, commercial, mixed-use, industrial, hospital, hotel, or school.`);
+    await beginFloorImageIntake(project, session, message.chat.id);
     return { ok: true };
   }
 
   const { data: projectData, error: projectError } = await supabase.from("projects").select("*").eq("id", session.project_id).single();
   if (projectError) throw projectError;
   const project = projectData as Project;
+
+  if (["COLLECTING_PURPOSE", "AWAITING_FLOOR_COUNT", "AWAITING_FLOOR_NAMES", "COLLECTING_SPECIAL_REQUIREMENTS"].includes(session.state)) {
+    await beginFloorImageIntake(project, session, message.chat.id);
+    return { ok: true };
+  }
 
   if (session.state === "COLLECTING_PURPOSE") {
     await supabase.from("projects").update({ building_purpose: text }).eq("id", project.id);
@@ -341,8 +378,8 @@ export async function handleTelegramUpdate(update: TelegramUpdate) {
       contentType: image.contentType
     });
     await triggerJobProcessing();
-    await updateSession(session.id, { state: text ? "DESIGNING" : "ANALYZING", current_floor_id: floor.id });
-    await botReply(message.chat.id, project.id, floor.id, text ? "Image and instructions received. I am analyzing the plan and preparing the deterministic electrical drawing." : "Image received. I am analyzing the floor plan now.");
+    await updateSession(session.id, { state: "ANALYZING", current_floor_id: floor.id });
+    await botReply(message.chat.id, project.id, floor.id, "Image received. I am analyzing the plan and preparing GPT-5.5 marking candidates for engineering review in the dashboard.");
     return { ok: true };
   }
 

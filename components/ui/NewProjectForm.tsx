@@ -72,6 +72,27 @@ export function NewProjectForm() {
         </div>
       </fieldset>
 
+      <fieldset className="grid gap-4 border-b border-[#c6a171]/14 pb-5">
+        <legend className="mb-3 text-sm font-semibold uppercase text-[#c9b9a6]/54">Floors & Requirements</legend>
+        <label className="block">
+          <span className="text-xs font-medium text-[#c9b9a6]/62">Floor sequence</span>
+          <textarea
+            name="floorNames"
+            required
+            defaultValue={"Basement\nGround Floor"}
+            className="mt-2 min-h-24 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 py-2 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-[#c9b9a6]/62">Special electrical requirements</span>
+          <textarea
+            name="specialRequirements"
+            className="mt-2 min-h-24 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 py-2 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58"
+            placeholder="Generator, ATS, EV charging, pumps, lifts, mechanical loads, server rooms, fire alarm, CCTV/data"
+          />
+        </label>
+      </fieldset>
+
       <label className="block">
         <span className="text-xs font-medium text-[#c9b9a6]/62">Admin notes</span>
         <textarea name="notes" className="mt-2 min-h-24 w-full rounded border border-[#c6a171]/20 bg-[#140f0c]/52 px-3 py-2 text-[#f7f2ea] outline-none transition placeholder:text-[#c9b9a6]/36 focus:border-[#d6b17d]/58" placeholder="Optional internal context for review" />

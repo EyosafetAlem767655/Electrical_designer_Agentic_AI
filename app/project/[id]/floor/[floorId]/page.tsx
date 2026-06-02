@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ClipboardCheck, FileClock, MessageSquare } from "lucide-react";
 import { DesignViewer } from "@/components/ui/DesignViewer";
+import { FloorMarkingReview } from "@/components/ui/FloorMarkingReview";
 import { FloorTimeline } from "@/components/ui/FloorTimeline";
 import { GlassPanel } from "@/components/ui/GlassPanel";
 import { NeonButton } from "@/components/ui/NeonButton";
@@ -49,6 +50,7 @@ export default async function FloorDesignPage({ params }: { params: Promise<{ id
 
       <section className="grid gap-5 2xl:grid-cols-[1fr_360px]">
         <div className="space-y-5">
+          <FloorMarkingReview projectId={id} floor={bundle.floor} />
           <DesignViewer design={currentDesign} />
           {previousDesign ? (
             <GlassPanel className="p-0">

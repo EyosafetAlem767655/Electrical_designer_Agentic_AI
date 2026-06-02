@@ -1,4 +1,5 @@
 import { after, NextResponse } from "next/server";
+import { proxyToBackend } from "@/lib/backend";
 import { getEnv } from "@/lib/env";
 import { processJobs } from "@/lib/jobs";
 
@@ -21,6 +22,15 @@ async function process(request: Request) {
   }
 
   const url = new URL(request.url);
+  const proxied = await proxyToBackend(`/jobs/process${url.search}`, {
+    method: "POST",
+    headers: {
+      ...(request.headers.get("x-job-secret") ? { "x-job-secret": request.headers.get("x-job-secret") as string } : {}),
+      ...(request.headers.get("x-job-mode") ? { "x-job-mode": request.headers.get("x-job-mode") as string } : {})
+    }
+  });
+  if (proxied) return NextResponse.json(proxied.body, { status: proxied.response.status });
+
   const background = url.searchParams.get("mode") === "background" || request.headers.get("x-job-mode") === "background";
   if (background) {
     after(async () => {

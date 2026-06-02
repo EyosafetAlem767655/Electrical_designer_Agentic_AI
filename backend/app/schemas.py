@@ -115,7 +115,7 @@ class PlanSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     project: ProjectMeta
     base_plan: BasePlan
-    boundary_polygon: list[Point] = Field(default_factory=list,
+    boundary_polygon: list[Point] = Field(default_factory=list, min_length=3,
         description="Usable design polygon in base-image pixel coordinates. Devices and routes must lie inside.")
     rooms: list[Room] = Field(default_factory=list)
     equipment: list[Equipment] = Field(default_factory=list)
@@ -175,6 +175,8 @@ def plan_spec_json_schema() -> dict:
         "properties": {
             "boundary_polygon": {
                 "type": "array",
+                "minItems": 3,
+                "maxItems": 24,
                 "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
                 "description": "Usable design polygon in base-image pixel coordinates (4+ points, clockwise).",
             },

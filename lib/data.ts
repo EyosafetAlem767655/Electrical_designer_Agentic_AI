@@ -39,8 +39,10 @@ const demoFloors: Floor[] = ["Basement", "Ground Floor", "First Floor", "Rooftop
   architectural_image_path: null,
   status: index === 0 ? "approved" : index === 1 ? "design_ready" : "pending",
   architect_answers: {},
+  review_answers: {},
   ai_questions: ["Confirm special equipment rooms.", "Confirm emergency lighting requirements."],
   ai_analysis: { summary: "Demo analysis placeholder for design review." },
+  design_markings: {},
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString()
 }));

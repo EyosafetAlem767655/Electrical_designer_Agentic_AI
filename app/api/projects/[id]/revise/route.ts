@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { proxyToBackend } from "@/lib/backend";
 import { createJob, triggerJobProcessing } from "@/lib/jobs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -15,6 +16,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const { id: projectId } = await context.params;
     const input = schema.parse(await request.json());
+    const proxied = await proxyToBackend(`/projects/${projectId}/revise`, {
+      method: "POST",
+      body: JSON.stringify({ floor_id: input.floorId, improvement_request: input.notes })
+    });
+    if (proxied) return NextResponse.json(proxied.body, { status: proxied.response.status });
+
     const supabase = getSupabaseAdmin();
     await supabase.from("floors").update({ status: "revision_requested" }).eq("id", input.floorId);
     await supabase.from("conversations").insert({ project_id: projectId, floor_id: input.floorId, sender: "admin", message: `Revision requested: ${input.notes}` });

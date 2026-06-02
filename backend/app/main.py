@@ -8,6 +8,7 @@ from .routes import telegram as telegram_routes
 from .routes import jobs as job_routes
 from .routes import projects as project_routes
 from .routes import ai as ai_routes
+from .routes import symbols as symbol_routes
 
 
 def create_app() -> FastAPI:
@@ -46,8 +47,10 @@ def create_app() -> FastAPI:
                 "GET  /projects/{project_id}",
                 "POST /projects/{project_id}/approve",
                 "POST /projects/{project_id}/revise",
+                "POST /projects/{project_id}/floors/{floor_id}/review-input",
                 "POST /ai/analyze",
                 "POST /ai/questions",
+                "GET  /symbols",
             ],
         }
 
@@ -64,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(job_routes.router)
     app.include_router(project_routes.router)
     app.include_router(ai_routes.router)
+    app.include_router(symbol_routes.router)
 
     return app
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { proxyToBackend } from "@/lib/backend";
 import { getEnv } from "@/lib/env";
 import { retryFailedJob } from "@/lib/jobs";
 
@@ -21,6 +22,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   try {
+    const proxied = await proxyToBackend(`/jobs/${id}/retry`, {
+      method: "POST",
+      headers: {
+        ...(request.headers.get("x-job-secret") ? { "x-job-secret": request.headers.get("x-job-secret") as string } : {})
+      }
+    });
+    if (proxied) return NextResponse.json(proxied.body, { status: proxied.response.status });
+
     const job = await retryFailedJob(id);
     return NextResponse.json({ ok: true, job });
   } catch (error) {

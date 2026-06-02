@@ -72,6 +72,92 @@ function extractJson<T>(text: string, fallback: T): T {
   }
 }
 
+function analysisJsonSchema() {
+  const point = { type: "array", minItems: 2, maxItems: 2, items: { type: "number" } };
+  const bbox = { type: "array", minItems: 4, maxItems: 4, items: { type: "number" } };
+  const warning = {
+    type: "object",
+    additionalProperties: false,
+    required: ["severity", "message"],
+    properties: {
+      severity: { type: "string" },
+      message: { type: "string" }
+    }
+  };
+  const room = {
+    type: "object",
+    additionalProperties: false,
+    required: ["id", "label", "room_type", "bbox", "confidence", "notes"],
+    properties: {
+      id: { type: "string" },
+      label: { type: "string" },
+      room_type: { type: "string" },
+      bbox,
+      confidence: { type: "number" },
+      notes: { type: "array", items: { type: "string" } }
+    }
+  };
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "summary",
+      "rooms",
+      "load_assumptions",
+      "main_supply_source",
+      "lighting_plan",
+      "socket_outlet_plan",
+      "switch_plan",
+      "db_recommendation",
+      "circuit_strategy",
+      "cable_route_strategy",
+      "emergency_systems",
+      "fire_alarm_plan",
+      "data_cctv_plan",
+      "unclear_items",
+      "questions",
+      "annotations",
+      "symbol_legend",
+      "electrician_notes",
+      "markings"
+    ],
+    properties: {
+      summary: { type: "string" },
+      rooms: { type: "array", items: room },
+      load_assumptions: { type: "array", items: { type: "string" } },
+      main_supply_source: { type: "string" },
+      lighting_plan: { type: "array", items: { type: "string" } },
+      socket_outlet_plan: { type: "array", items: { type: "string" } },
+      switch_plan: { type: "array", items: { type: "string" } },
+      db_recommendation: { type: "string" },
+      circuit_strategy: { type: "string" },
+      cable_route_strategy: { type: "string" },
+      emergency_systems: { type: "array", items: { type: "string" } },
+      fire_alarm_plan: { type: "array", items: { type: "string" } },
+      data_cctv_plan: { type: "array", items: { type: "string" } },
+      unclear_items: { type: "array", items: { type: "string" } },
+      questions: { type: "array", items: { type: "string" } },
+      annotations: { type: "array", items: { type: "string" } },
+      symbol_legend: { type: "array", items: { type: "string" } },
+      electrician_notes: { type: "array", items: { type: "string" } },
+      markings: {
+        type: "object",
+        additionalProperties: false,
+        required: ["source_size", "boundary_polygon", "design_bbox", "db_room_bbox", "generator_room_bbox", "confidence", "warnings"],
+        properties: {
+          source_size: { type: "array", minItems: 2, maxItems: 2, items: { type: "number" } },
+          boundary_polygon: { type: "array", minItems: 3, maxItems: 24, items: point },
+          design_bbox: bbox,
+          db_room_bbox: bbox,
+          generator_room_bbox: bbox,
+          confidence: { type: "number" },
+          warnings: { type: "array", items: warning }
+        }
+      }
+    }
+  };
+}
+
 function toOpenAiContent(content: ChatMessage["content"]) {
   if (typeof content === "string") return [{ type: "input_text", text: content }];
   return content.map((item) => {
@@ -111,7 +197,7 @@ export async function analyzeFloorPlan(imageBase64: string, context: Record<stri
       reasoning: { effort: "high" },
       text: {
         verbosity: "low",
-        format: { type: "json_object" }
+        format: { type: "json_schema", name: "floor_analysis_with_markings", strict: true, schema: analysisJsonSchema() }
       },
       input: [
         {
@@ -124,9 +210,10 @@ export async function analyzeFloorPlan(imageBase64: string, context: Record<stri
             { type: "input_image", image_url: imageUrl, detail: "high" },
             {
               type: "input_text",
-              text: `Analyze this architectural floor plan for Ethiopian/EBCS + IEC electrical installation. Return JSON only with keys rooms, load_assumptions, main_supply_source, lighting_plan, socket_outlet_plan, switch_plan, db_recommendation, circuit_strategy, cable_route_strategy, emergency_systems, fire_alarm_plan, data_cctv_plan, unclear_items, questions, annotations, symbol_legend, electrician_notes.
+              text: `Analyze this architectural floor plan for Ethiopian/EBCS + IEC electrical installation. Return JSON only with keys summary, rooms, load_assumptions, main_supply_source, lighting_plan, socket_outlet_plan, switch_plan, db_recommendation, circuit_strategy, cable_route_strategy, emergency_systems, fire_alarm_plan, data_cctv_plan, unclear_items, questions, annotations, symbol_legend, electrician_notes, markings.
 
 Use fluorescent lamps, manual switches, and 220-230V earthed socket outlets as defaults unless explicitly changed. Ask about the utility incomer/MSU location when unclear.
+Also propose full-plan markings for web review in original source-image pixels: source_size, usable boundary_polygon, design_bbox, db_room_bbox, and generator_room_bbox. If uncertain, still return conservative boxes and add warnings.
 
 Context: ${JSON.stringify(context)}`
             }
@@ -138,6 +225,7 @@ Context: ${JSON.stringify(context)}`
   );
 
   return extractJson(response, {
+    summary: "",
     rooms: [],
     load_assumptions: [],
     main_supply_source: "",
@@ -154,7 +242,16 @@ Context: ${JSON.stringify(context)}`
     questions: ["Please confirm room purposes, main supply/MSU location, and any special equipment for this floor."],
     annotations: [],
     symbol_legend: [],
-    electrician_notes: []
+    electrician_notes: [],
+    markings: {
+      source_size: [1000, 700],
+      boundary_polygon: [[50, 56], [950, 56], [950, 630], [50, 630]],
+      design_bbox: [50, 56, 950, 630],
+      db_room_bbox: [50, 56, 280, 126],
+      generator_room_bbox: [780, 56, 950, 140],
+      confidence: 0,
+      warnings: [{ severity: "warning", message: "AI marking extraction failed; engineer must mark this floor in the dashboard." }]
+    }
   });
 }
 

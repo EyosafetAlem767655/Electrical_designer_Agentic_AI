@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { proxyToBackend } from "@/lib/backend";
 import { createJob, triggerJobProcessing } from "@/lib/jobs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { sendTelegramMessage } from "@/lib/telegram";
@@ -16,6 +17,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const { id: projectId } = await context.params;
     const { floorId } = schema.parse(await request.json());
+    const proxied = await proxyToBackend(`/projects/${projectId}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ floor_id: floorId })
+    });
+    if (proxied) return NextResponse.json(proxied.body, { status: proxied.response.status });
+
     const supabase = getSupabaseAdmin();
 
     const [{ data: projectData, error: projectError }, { data: floorData, error: floorError }, { data: floorsData, error: floorsError }] =

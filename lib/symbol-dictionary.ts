@@ -1,6 +1,26 @@
 import type { BoqItem, SymbolLegendItem } from "@/types";
 
-export const SYMBOL_CODES = ["MSU", "ATS", "G", "DB", "FL", "EL", "SW", "SO", "FA", "CCTV/DATA"] as const;
+export const SYMBOL_CODES = [
+  "MSU",
+  "ATS",
+  "G",
+  "DB",
+  "FL",
+  "EL",
+  "SW",
+  "SO",
+  "FA",
+  "CCTV/DATA",
+  "AC",
+  "EF",
+  "WH",
+  "PUMP",
+  "COOKER",
+  "EV",
+  "LIFT",
+  "MACHINE",
+  "EQUIP"
+] as const;
 
 export type SymbolCode = (typeof SYMBOL_CODES)[number];
 
@@ -12,6 +32,9 @@ export type SymbolDefinition = {
   defaultSpecification: string;
   unit: string;
   color: string;
+  promptGuidance?: string;
+  boqMapping?: string;
+  rendererShape?: string;
 };
 
 export const SYMBOL_DICTIONARY: Record<SymbolCode, SymbolDefinition> = {
@@ -104,6 +127,87 @@ export const SYMBOL_DICTIONARY: Record<SymbolCode, SymbolDefinition> = {
     defaultSpecification: "CCTV/data point with low-current containment",
     unit: "No.",
     color: "#555555"
+  },
+  AC: {
+    symbol: "AC",
+    label: "Air Conditioner",
+    description: "Split or packaged air-conditioning load point",
+    category: "Mechanical power",
+    defaultSpecification: "Dedicated AC supply point with local isolator, rating to be verified",
+    unit: "No.",
+    color: "#0f766e"
+  },
+  EF: {
+    symbol: "EF",
+    label: "Extractor Fan",
+    description: "Ventilation or extractor fan point",
+    category: "Mechanical power",
+    defaultSpecification: "Extractor fan point with local control/isolator",
+    unit: "No.",
+    color: "#4b5563"
+  },
+  WH: {
+    symbol: "WH",
+    label: "Water Heater",
+    description: "Electric water heater load point",
+    category: "Power",
+    defaultSpecification: "Dedicated water-heater circuit with local isolator",
+    unit: "No.",
+    color: "#0ea5e9"
+  },
+  PUMP: {
+    symbol: "PUMP",
+    label: "Pump",
+    description: "Water, sump, or booster pump load point",
+    category: "Mechanical power",
+    defaultSpecification: "Dedicated pump supply with starter/protection as required",
+    unit: "No.",
+    color: "#2563eb"
+  },
+  COOKER: {
+    symbol: "COOKER",
+    label: "Cooker",
+    description: "Dedicated cooker or kitchen equipment point",
+    category: "Power",
+    defaultSpecification: "Dedicated cooker control unit and final connection point",
+    unit: "No.",
+    color: "#b45309"
+  },
+  EV: {
+    symbol: "EV",
+    label: "EV Charger",
+    description: "Dedicated electric vehicle charging point",
+    category: "EV charging",
+    defaultSpecification: "EV charger point with dedicated protection and load management verification",
+    unit: "No.",
+    color: "#16a34a"
+  },
+  LIFT: {
+    symbol: "LIFT",
+    label: "Lift",
+    description: "Lift or elevator electrical supply point",
+    category: "Vertical transport",
+    defaultSpecification: "Lift feeder and isolator, final rating by lift vendor",
+    unit: "No.",
+    color: "#7c3aed"
+  },
+  MACHINE: {
+    symbol: "MACHINE",
+    label: "Machine Load",
+    description: "Dedicated machinery or industrial equipment supply",
+    category: "Industrial power",
+    defaultSpecification: "Dedicated machinery circuit, protection and cable size by final load schedule",
+    unit: "No.",
+    color: "#be123c"
+  },
+  EQUIP: {
+    symbol: "EQUIP",
+    label: "Equipment Point",
+    description: "Generic dedicated electrical equipment point",
+    category: "Power",
+    defaultSpecification: "Dedicated equipment point, final load to be verified",
+    unit: "No.",
+    color: "#64748b"
   }
 };
 
@@ -135,4 +239,25 @@ export function boqItemForSymbol(symbol: SymbolCode, quantity: number): BoqItem 
     standard: symbol === "FA" ? "EBCS fire safety / IEC" : "EBCS / IEC 60364",
     notes: "Quantity generated from validated visible drawing specification"
   };
+}
+
+export function symbolPromptGuidance(symbol: SymbolCode) {
+  const item = SYMBOL_DICTIONARY[symbol];
+  return item.promptGuidance ?? `Use ${symbol} only where ${item.description.toLowerCase()} is required or clearly implied.`;
+}
+
+export function symbolBoqMapping(symbol: SymbolCode) {
+  const item = SYMBOL_DICTIONARY[symbol];
+  return item.boqMapping ?? item.label;
+}
+
+export function symbolRendererShape(symbol: SymbolCode) {
+  const item = SYMBOL_DICTIONARY[symbol];
+  if (item.rendererShape) return item.rendererShape;
+  if (symbol === "FL") return "rounded luminaire rectangle";
+  if (symbol === "EL") return "emergency triangle";
+  if (symbol === "SO") return "socket rectangle";
+  if (symbol === "G") return "generator circle";
+  if (symbol === "CCTV/DATA") return "data camera tag";
+  return "labeled equipment tag";
 }

@@ -4,6 +4,7 @@ export type FloorStatus =
   | "pdf_received"
   | "image_received"
   | "analyzing"
+  | "marking_review"
   | "questions_sent"
   | "designing"
   | "design_ready"
@@ -16,6 +17,7 @@ export type BotState =
   | "AWAITING_FLOOR_NAMES"
   | "COLLECTING_PURPOSE"
   | "COLLECTING_SPECIAL_REQUIREMENTS"
+  | "AWAITING_ADMIN_FLOORS"
   | "AWAITING_PDF"
   | "AWAITING_IMAGE"
   | "ANALYZING"
@@ -34,6 +36,24 @@ export type JobType =
   | "pdf_compile";
 
 export type JobStatus = "pending" | "processing" | "completed" | "failed";
+
+export type Point = [number, number];
+export type Bbox = [number, number, number, number];
+
+export type DesignMarkings = {
+  source_size?: [number, number];
+  boundary_polygon?: Point[];
+  design_bbox?: Bbox;
+  db_room_bbox?: Bbox;
+  generator_room_bbox?: Bbox;
+  confidence?: number;
+  warnings?: Array<{ severity?: string; message: string }>;
+};
+
+export type FloorDesignMarkings = {
+  ai?: DesignMarkings;
+  confirmed?: DesignMarkings;
+};
 
 export type Project = {
   id: string;
@@ -72,8 +92,10 @@ export type Floor = {
   architectural_image_path: string | null;
   status: FloorStatus;
   architect_answers: Record<string, unknown>;
+  review_answers: Record<string, unknown>;
   ai_questions: string[];
   ai_analysis: Record<string, unknown>;
+  design_markings: FloorDesignMarkings;
   created_at: string;
   updated_at: string;
 };

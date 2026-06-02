@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { downloadTelegramFile, sendTelegramMessage, sendTelegramPhoto } from "@/lib/telegram";
 import { fetchStorageBase64, uploadProjectFile } from "@/lib/storage";
 import { createPlanSpecWithOpenAI } from "@/lib/openai-plan-analyzer";
+import { designMarkingsSchema } from "@/lib/design-markings";
 import {
   analyzeFloorPlan,
   fallbackAnnotations,
@@ -109,13 +110,14 @@ export async function retryFailedJob(jobId: string) {
 }
 
 async function prepareRetriedJob(job: Job) {
-  if (job.type !== "generate_design" && job.type !== "revision_design") return;
+  if (job.type !== "analyze_floor" && job.type !== "generate_design" && job.type !== "revision_design") return;
   const { projectId, floorId } = job.payload as { projectId?: string; floorId?: string };
   if (!projectId || !floorId) return;
   const supabase = getSupabaseAdmin();
+  const isAnalysis = job.type === "analyze_floor";
   await Promise.all([
-    supabase.from("floors").update({ status: "designing" }).eq("id", floorId),
-    supabase.from("bot_sessions").update({ state: "DESIGNING", current_floor_id: floorId }).eq("project_id", projectId)
+    supabase.from("floors").update({ status: isAnalysis ? "analyzing" : "designing" }).eq("id", floorId),
+    supabase.from("bot_sessions").update({ state: isAnalysis ? "ANALYZING" : "DESIGNING", current_floor_id: floorId }).eq("project_id", projectId)
   ]);
 }
 
@@ -208,8 +210,8 @@ async function applyJobFailureSideEffects(job: Job, message: string) {
 
   const supabase = getSupabaseAdmin();
   await Promise.all([
-    supabase.from("floors").update({ status: "questions_sent" }).eq("id", floorId),
-    supabase.from("bot_sessions").update({ state: "AWAITING_ANSWERS", current_floor_id: floorId }).eq("project_id", projectId)
+    supabase.from("floors").update({ status: "marking_review" }).eq("id", floorId),
+    supabase.from("bot_sessions").update({ state: "ANALYZING", current_floor_id: floorId }).eq("project_id", projectId)
   ]);
 
   const { data: project } = await supabase.from("projects").select("telegram_chat_id").eq("id", projectId).maybeSingle();
@@ -240,6 +242,53 @@ async function getProjectFloor(projectId: string, floorId: string) {
   if (projectError) throw projectError;
   if (floorError) throw floorError;
   return { project: project as Project, floor: floor as Floor };
+}
+
+function fallbackMarkings(sourceSize: [number, number]) {
+  const [w, h] = sourceSize;
+  return {
+    source_size: sourceSize,
+    boundary_polygon: [
+      [w * 0.05, h * 0.08],
+      [w * 0.95, h * 0.08],
+      [w * 0.95, h * 0.9],
+      [w * 0.05, h * 0.9]
+    ],
+    design_bbox: [w * 0.05, h * 0.08, w * 0.95, h * 0.9],
+    db_room_bbox: [w * 0.05, h * 0.08, w * 0.28, h * 0.18],
+    generator_room_bbox: [w * 0.78, h * 0.08, w * 0.95, h * 0.2],
+    confidence: 0,
+    warnings: [{ severity: "warning", message: "AI did not return valid marking candidates; review and adjust manually." }]
+  };
+}
+
+function normalizeDesignMarkings(analysis: unknown) {
+  const raw = analysis && typeof analysis === "object" ? (analysis as Record<string, unknown>).markings : null;
+  const sourceCandidate = raw && typeof raw === "object" ? (raw as Record<string, unknown>).source_size : null;
+  const sourceSize: [number, number] =
+    Array.isArray(sourceCandidate) && typeof sourceCandidate[0] === "number" && typeof sourceCandidate[1] === "number"
+      ? [Math.max(1, sourceCandidate[0]), Math.max(1, sourceCandidate[1])]
+      : [1000, 700];
+  const parsed = designMarkingsSchema.safeParse(raw);
+  return parsed.success ? parsed.data : fallbackMarkings(sourceSize);
+}
+
+function markingsForGeneration(floor: Floor) {
+  const designMarkings = floor.design_markings ?? {};
+  return designMarkings.confirmed ?? designMarkings.ai ?? {};
+}
+
+async function fetchPreviousPlanSpec(floorId: string) {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase.from("files").select("*").eq("floor_id", floorId).eq("file_type", "plan_spec").order("created_at", { ascending: false }).limit(1);
+  const path = data?.[0]?.storage_path as string | undefined;
+  if (!path) return null;
+  try {
+    return JSON.parse(Buffer.from(await fetchStorageBase64(path), "base64").toString("utf8")) as unknown;
+  } catch (error) {
+    console.warn("Could not load previous plan spec", error);
+    return null;
+  }
 }
 
 export function chooseDesignEditSource(input: { improvementRequest?: string; originalImageUrl: string | null; previousDesignImageUrl?: string | null }) {
@@ -338,25 +387,20 @@ async function processAnalyzeFloor(job: Job) {
   const imageInput = floor.architectural_image_url ?? (await fetchStorageBase64(floor.architectural_image_path));
   const analysis = await analyzeFloorPlan(imageInput, { project, floor });
   const questions = await generateQuestions(analysis as Record<string, unknown>, { project, floor });
-  const hasFeedback = typeof floor.architect_answers?.raw === "string" && floor.architect_answers.raw.trim().length > 0;
+  const markings = normalizeDesignMarkings(analysis);
 
   await supabase
     .from("floors")
-    .update({ status: hasFeedback ? "designing" : "questions_sent", ai_analysis: analysis, ai_questions: questions })
+    .update({ status: "marking_review", ai_analysis: analysis, ai_questions: questions, design_markings: { ai: markings } })
     .eq("id", floorId);
 
   await supabase
     .from("bot_sessions")
-    .update({ state: hasFeedback ? "DESIGNING" : "AWAITING_ANSWERS", current_floor_id: floorId })
+    .update({ state: "ANALYZING", current_floor_id: floorId })
     .eq("project_id", projectId);
 
-  if (hasFeedback) {
-    await createJob("generate_design", { projectId, floorId });
-    return;
-  }
-
   if (project.telegram_chat_id) {
-    const text = `I analyzed ${floor.floor_name}. Please answer these questions:\n\n${questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}`;
+    const text = `I analyzed ${floor.floor_name}. The engineering dashboard now has GPT-5.5 marking candidates and clarification questions for review.`;
     await sendTelegramMessage(project.telegram_chat_id, text);
     await supabase.from("conversations").insert({ project_id: projectId, floor_id: floorId, sender: "bot", message: text });
   }
@@ -384,6 +428,8 @@ async function processGenerateDesign(job: Job) {
   const specPath = `projects/${projectId}/floors/${floorId}/plan-spec-v${version}.json`;
   const debugPath = `projects/${projectId}/floors/${floorId}/debug-overlay-v${version}.png`;
   const annotations = normalizeAnnotations((floor.ai_analysis as Record<string, unknown>)?.annotations, fallbackAnnotations());
+  const previousDesign = (existing?.[0] as Design | undefined) ?? null;
+  const previousPlanSpec = improvementRequest ? await fetchPreviousPlanSpec(floorId) : null;
 
   console.log("[jobs:generate_design] OpenAI JSON plan specification started", { jobId: job.id, projectId, floorId, version });
   const planSpec = await createPlanSpecWithOpenAI({
@@ -395,6 +441,10 @@ async function processGenerateDesign(job: Job) {
     sourceImageUrl,
     feedback: floor.architect_answers,
     analysis: floor.ai_analysis,
+    confirmedMarkings: markingsForGeneration(floor),
+    reviewAnswers: floor.review_answers ?? {},
+    previousPlanSpec,
+    previousDesignImageUrl: improvementRequest ? previousDesign?.design_image_url ?? null : null,
     specialRequirements: project.special_requirements,
     improvementRequest
   });

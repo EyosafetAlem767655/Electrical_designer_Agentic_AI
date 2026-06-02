@@ -25,7 +25,10 @@ from .config import get_settings
 from .schemas import (
     PlanSpec, normalize_plan_spec, plan_spec_json_schema, validate_symbol_consistency,
 )
-from .symbols import SYMBOL_CODES
+from .symbols import (
+    SYMBOL_CODES, SYMBOL_DICTIONARY, boq_mapping_for_symbol,
+    prompt_guidance_for_symbol, renderer_shape_for_symbol,
+)
 
 OPENAI_URL = "https://api.openai.com/v1/responses"
 OPENAI_TIMEOUT_SECONDS = 240.0
@@ -121,6 +124,111 @@ def _strict_format(name: str) -> dict:
     }
 
 
+def _schema_format(name: str, schema: dict, verbosity: str = "low") -> dict:
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": name,
+            "strict": True,
+            "schema": schema,
+        },
+        "verbosity": verbosity,
+    }
+
+
+def _symbol_catalog() -> list[dict]:
+    return [
+        {
+            "symbol": code,
+            "label": item.label,
+            "description": item.description,
+            "category": item.category,
+            "default_specification": item.default_specification,
+            "unit": item.unit,
+            "prompt_guidance": prompt_guidance_for_symbol(code),
+            "boq_mapping": boq_mapping_for_symbol(code),
+            "renderer_shape": renderer_shape_for_symbol(code),
+        }
+        for code, item in SYMBOL_DICTIONARY.items()
+    ]
+
+
+def _analysis_schema() -> dict:
+    point = {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}
+    bbox = {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}}
+    warning = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["severity", "message"],
+        "properties": {
+            "severity": {"type": "string", "enum": ["info", "verify", "warning", "error"]},
+            "message": {"type": "string"},
+        },
+    }
+    room = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["id", "label", "room_type", "bbox", "confidence", "notes"],
+        "properties": {
+            "id": {"type": "string"},
+            "label": {"type": "string"},
+            "room_type": {"type": "string"},
+            "bbox": bbox,
+            "confidence": {"type": "number"},
+            "notes": {"type": "array", "items": {"type": "string"}},
+        },
+    }
+    markings = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "source_size", "boundary_polygon", "design_bbox", "db_room_bbox",
+            "generator_room_bbox", "confidence", "warnings",
+        ],
+        "properties": {
+            "source_size": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+            "boundary_polygon": {"type": "array", "minItems": 3, "maxItems": 24, "items": point},
+            "design_bbox": bbox,
+            "db_room_bbox": bbox,
+            "generator_room_bbox": bbox,
+            "confidence": {"type": "number"},
+            "warnings": {"type": "array", "items": warning},
+        },
+    }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "summary", "rooms", "load_assumptions", "main_supply_source",
+            "lighting_plan", "socket_outlet_plan", "switch_plan", "db_recommendation",
+            "circuit_strategy", "cable_route_strategy", "emergency_systems",
+            "fire_alarm_plan", "data_cctv_plan", "unclear_items", "questions",
+            "annotations", "symbol_legend", "electrician_notes", "markings",
+        ],
+        "properties": {
+            "summary": {"type": "string"},
+            "rooms": {"type": "array", "items": room},
+            "load_assumptions": {"type": "array", "items": {"type": "string"}},
+            "main_supply_source": {"type": "string"},
+            "lighting_plan": {"type": "array", "items": {"type": "string"}},
+            "socket_outlet_plan": {"type": "array", "items": {"type": "string"}},
+            "switch_plan": {"type": "array", "items": {"type": "string"}},
+            "db_recommendation": {"type": "string"},
+            "circuit_strategy": {"type": "string"},
+            "cable_route_strategy": {"type": "string"},
+            "emergency_systems": {"type": "array", "items": {"type": "string"}},
+            "fire_alarm_plan": {"type": "array", "items": {"type": "string"}},
+            "data_cctv_plan": {"type": "array", "items": {"type": "string"}},
+            "unclear_items": {"type": "array", "items": {"type": "string"}},
+            "questions": {"type": "array", "items": {"type": "string"}},
+            "annotations": {"type": "array", "items": {"type": "string"}},
+            "symbol_legend": {"type": "array", "items": {"type": "string"}},
+            "electrician_notes": {"type": "array", "items": {"type": "string"}},
+            "markings": markings,
+        },
+    }
+
+
 async def _persist_failed_output(project_id: str, floor_id: str, raw: str, reason: str) -> str:
     path = Path(tempfile.gettempdir()) / f"failed-plan-spec-{project_id}-{floor_id}.json"
     try:
@@ -145,7 +253,9 @@ DESIGN_SYSTEM_PROMPT = (
 
 def _build_design_prompt(*, project_name: str, floor_name: str, building_purpose: Optional[str],
                         special_requirements: Optional[str], improvement_request: Optional[str],
-                        architect_description: Any) -> str:
+                        architect_description: Any, analysis: Any,
+                        confirmed_markings: Any, review_answers: Any,
+                        previous_plan_spec: Any) -> str:
     """One open prompt — model gets the image and the architect's words, then designs."""
     return f"""Design the electrical installation for this floor. Return one JSON PlanSpec.
 
@@ -157,6 +267,17 @@ Architect's description / requirements:
 
 Special project requirements: {special_requirements or "none"}
 Revision request (if any): {improvement_request or "none"}
+Web review answers / clarifications:
+{_truncate(review_answers) or "{}"}
+
+Existing AI analysis:
+{_truncate(analysis) or "{}"}
+
+Confirmed full-plan markings in source image pixel coordinates:
+{_truncate(confirmed_markings) or "{}"}
+
+Previous PlanSpec for revision continuity:
+{_truncate(previous_plan_spec, 16000) or "{}"}
 
 CRITICAL — boundary:
 - First, look at the image and determine the USABLE design boundary as a polygon of points
@@ -165,6 +286,9 @@ CRITICAL — boundary:
 - Every single device and equipment location you return MUST fall strictly inside that polygon.
   The renderer clips to the boundary; anything outside disappears.
 - Set base_plan.image_width / image_height to the pixel dimensions you reason in.
+- If confirmed markings are provided, they override any inferred boundary/room guess.
+- Place DB/MSU/ATS in the confirmed DB / meter room box when present.
+- Place G in the confirmed generator/store room box when present, unless review answers override it.
 
 What to return (JSON, schema-validated):
 - project.title — short, e.g. "{floor_name} Electrical Layout"
@@ -179,7 +303,8 @@ What to return (JSON, schema-validated):
 - boq: count each visible symbol.
 - warnings: anything uncertain — use VERIFY warnings instead of guessing.
 
-Symbol vocabulary (the renderer can only draw these): {", ".join(SYMBOL_CODES)}.
+Symbol library (the renderer can only draw these):
+{json.dumps(_symbol_catalog(), indent=2)}
 
 Routing — IMPORTANT:
 You do NOT need to draw the wiring. The Python renderer builds clean orthogonal trunk-and-branch
@@ -196,6 +321,11 @@ Engineering judgement (apply, don't recite):
 - G (default 80 kVA if not specified) feeds ATS, which feeds emergency loads.
 - If you can't identify a room, label it conservatively and add a VERIFY warning.
 
+For revisions:
+- Preserve the confirmed markings; do not ask anyone to mark boundaries again.
+- Use the previous rendered design image only as visual QA context; do not request image generation.
+- Apply the revision in the JSON PlanSpec and let Python re-render deterministically.
+
 Return JSON only.
 """
 
@@ -204,13 +334,26 @@ async def create_plan_spec(*, project_id: str, floor_id: str, project_name: str,
                           building_purpose: Optional[str], source_image_url: str,
                           architect_description: Any = None,
                           special_requirements: Optional[str] = None,
-                          improvement_request: Optional[str] = None) -> PlanSpec:
+                          improvement_request: Optional[str] = None,
+                          analysis: Any = None,
+                          confirmed_markings: Any = None,
+                          review_answers: Any = None,
+                          previous_plan_spec: Any = None,
+                          previous_design_image_url: Optional[str] = None) -> PlanSpec:
     """Single-pass design: image + architect description → PlanSpec. No question pre-pass."""
     prompt = _build_design_prompt(
         project_name=project_name, floor_name=floor_name, building_purpose=building_purpose,
         special_requirements=special_requirements, improvement_request=improvement_request,
-        architect_description=architect_description,
+        architect_description=architect_description, analysis=analysis,
+        confirmed_markings=confirmed_markings, review_answers=review_answers,
+        previous_plan_spec=previous_plan_spec,
     )
+
+    user_content = [_image_input(source_image_url)]
+    if previous_design_image_url:
+        user_content.append({"type": "input_text", "text": "Previous rendered design PNG for revision QA context:"})
+        user_content.append(_image_input(previous_design_image_url))
+    user_content.append({"type": "input_text", "text": prompt})
 
     body = {
         "model": _design_model(),
@@ -218,8 +361,7 @@ async def create_plan_spec(*, project_id: str, floor_id: str, project_name: str,
         "text": _strict_format("electrical_plan_spec"),
         "input": [
             {"role": "system", "content": [{"type": "input_text", "text": DESIGN_SYSTEM_PROMPT}]},
-            {"role": "user", "content": [_image_input(source_image_url),
-                                         {"type": "input_text", "text": prompt}]},
+            {"role": "user", "content": user_content},
         ],
     }
 
@@ -282,17 +424,16 @@ async def analyze_floor_plan(image_source: str, context: dict) -> dict:
         "Identify rooms and their likely purpose, lighting and socket needs, where the main supply enters, "
         "where a DB/MSU/ATS/generator should sit, emergency and fire-alarm considerations, and anything you "
         "cannot determine with confidence.\n\n"
-        "Return JSON only with these keys: rooms, load_assumptions, main_supply_source, lighting_plan, "
-        "socket_outlet_plan, switch_plan, db_recommendation, circuit_strategy, cable_route_strategy, "
-        "emergency_systems, fire_alarm_plan, data_cctv_plan, unclear_items, questions, annotations, "
-        "symbol_legend, electrician_notes.\n\n"
+        "Also propose full-plan markings for web review: source_size, usable boundary_polygon, "
+        "design_bbox, db_room_bbox, and generator_room_bbox. Coordinates must be in original source "
+        "image pixel coordinates. If uncertain, still return conservative boxes and add warnings.\n\n"
         f"Context: {json.dumps(context, default=str)}"
     )
 
     body = {
         "model": _analysis_model(),
         "reasoning": {"effort": "high"},
-        "text": {"verbosity": "low", "format": {"type": "json_object"}},
+        "text": _schema_format("floor_analysis_with_markings", _analysis_schema()),
         "input": [
             {"role": "system", "content": [{"type": "input_text", "text": ANALYSIS_SYSTEM_PROMPT}]},
             {"role": "user", "content": [_image_input(image_source), {"type": "input_text", "text": prompt}]},
@@ -303,7 +444,7 @@ async def analyze_floor_plan(image_source: str, context: dict) -> dict:
         return json.loads(_extract_json_text(text))
     except Exception:
         return {
-            "rooms": [], "load_assumptions": [], "main_supply_source": "",
+            "summary": "", "rooms": [], "load_assumptions": [], "main_supply_source": "",
             "lighting_plan": [], "socket_outlet_plan": [], "switch_plan": [],
             "db_recommendation": "", "circuit_strategy": "", "cable_route_strategy": "",
             "emergency_systems": [], "fire_alarm_plan": [], "data_cctv_plan": [],
@@ -311,6 +452,15 @@ async def analyze_floor_plan(image_source: str, context: dict) -> dict:
                 "Please confirm room purposes, main supply/MSU location, and any special equipment for this floor."
             ],
             "annotations": [], "symbol_legend": [], "electrician_notes": [],
+            "markings": {
+                "source_size": context.get("source_size") or [1, 1],
+                "boundary_polygon": [[0, 0], [1, 0], [1, 1], [0, 1]],
+                "design_bbox": [0, 0, 1, 1],
+                "db_room_bbox": [0, 0, 1, 1],
+                "generator_room_bbox": [0, 0, 1, 1],
+                "confidence": 0,
+                "warnings": [{"severity": "warning", "message": "AI marking extraction failed; engineer must mark this floor in the dashboard."}],
+            },
         }
 
 

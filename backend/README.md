@@ -65,8 +65,10 @@ backend/
 | GET    | `/projects/{id}`               | Project + floors + designs                       |
 | POST   | `/projects/{id}/approve`       | Approve floor & advance to the next              |
 | POST   | `/projects/{id}/revise`        | Queue a revision job for a floor                 |
+| POST   | `/projects/{id}/floors/{floor_id}/review-input` | Save confirmed markings/answers and queue design |
 | POST   | `/ai/analyze`                  | Ad-hoc vision pass for a single image            |
 | POST   | `/ai/questions`                | Ad-hoc question generator                        |
+| GET    | `/symbols`                     | Canonical symbol library for prompt/UI rendering |
 
 ## Running locally
 
@@ -100,8 +102,8 @@ docker run -p 8000:8000 --env-file backend/.env electrical-designer-backend
 
 ## Wiring the Next.js frontend
 
-Set `BACKEND_BASE_URL=https://<your-backend-host>` in the Vercel project,
-then change the Next.js API routes (`app/api/...`) to proxy to the backend.
+Set `BACKEND_BASE_URL=https://<your-backend-host>` in the Vercel project.
+The Next.js API routes proxy workflow mutations to the backend when this is set.
 The frontend dashboard / webapp pages do not need changes — they read directly
 from Supabase tables, which both services share.
 
@@ -122,3 +124,7 @@ place; they're left in the repo as a reference while the migration is rolled out
 3. **Single language for the data path.** Validation (Pydantic), prompting, calling,
    rendering, and persisting all live in Python — fewer translation layers between
    the model's JSON and the rendered pixels.
+4. **Marking review before generation.** Telegram image intake queues `analyze_floor`.
+   GPT stores candidate source-pixel markings and questions, the webapp confirms them,
+   then `generate_design` receives the image, confirmed markings, answers, symbol library,
+   and previous spec/render for revisions.

@@ -9,12 +9,14 @@ Mirrors lib/jobs.ts:
 """
 from __future__ import annotations
 import asyncio
+import io
 import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import httpx
+from PIL import Image
 
 from .config import get_settings
 from . import openai_client
@@ -137,9 +139,9 @@ async def _apply_job_failure_side_effects(job: dict, message: str) -> None:
     if not project_id or not floor_id:
         return
     supabase = get_supabase()
-    supabase.table("floors").update({"status": "questions_sent"}).eq("id", floor_id).execute()
+    supabase.table("floors").update({"status": "marking_review"}).eq("id", floor_id).execute()
     supabase.table("bot_sessions").update({
-        "state": "AWAITING_ANSWERS", "current_floor_id": floor_id,
+        "state": "ANALYZING", "current_floor_id": floor_id,
     }).eq("project_id", project_id).execute()
     project = supabase.table("projects").select("telegram_chat_id").eq("id", project_id).maybe_single().execute()
     text = ("Design generation did not finish. The engineering dashboard now shows the failed job "
@@ -169,6 +171,93 @@ async def _get_project_floor(project_id: str, floor_id: str) -> tuple[dict, dict
     project = supabase.table("projects").select("*").eq("id", project_id).single().execute().data
     floor = supabase.table("floors").select("*").eq("id", floor_id).single().execute().data
     return project, floor
+
+
+def _image_size(image_bytes: bytes) -> list[int]:
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        return [int(image.width), int(image.height)]
+
+
+def _normalize_markings(analysis: dict, source_size: list[int]) -> dict:
+    markings = analysis.get("markings") if isinstance(analysis.get("markings"), dict) else {}
+    if not markings:
+        w, h = source_size
+        markings = {
+            "source_size": source_size,
+            "boundary_polygon": [[w * 0.05, h * 0.08], [w * 0.95, h * 0.08], [w * 0.95, h * 0.90], [w * 0.05, h * 0.90]],
+            "design_bbox": [w * 0.05, h * 0.08, w * 0.95, h * 0.90],
+            "db_room_bbox": [w * 0.05, h * 0.08, w * 0.28, h * 0.18],
+            "generator_room_bbox": [w * 0.78, h * 0.08, w * 0.95, h * 0.20],
+            "confidence": 0,
+            "warnings": [{"severity": "warning", "message": "AI did not return marking candidates; review and adjust manually."}],
+        }
+    markings["source_size"] = source_size
+    return markings
+
+
+def _markings_for_generation(floor: dict) -> dict:
+    design_markings = floor.get("design_markings") if isinstance(floor.get("design_markings"), dict) else {}
+    confirmed = design_markings.get("confirmed") if isinstance(design_markings.get("confirmed"), dict) else None
+    ai = design_markings.get("ai") if isinstance(design_markings.get("ai"), dict) else None
+    return confirmed or ai or {}
+
+
+def _fetch_previous_plan_spec(floor_id: str) -> Optional[dict]:
+    supabase = get_supabase()
+    files = supabase.table("files").select("*").eq("floor_id", floor_id).eq("file_type", "plan_spec") \
+        .order("created_at", desc=True).limit(1).execute().data or []
+    if not files:
+        return None
+    path = files[0].get("storage_path")
+    if not path:
+        return None
+    try:
+        return json.loads(fetch_storage_bytes(path).decode("utf-8"))
+    except Exception as exc:
+        log.warning("Could not load previous plan spec for floor %s: %s", floor_id, exc)
+        return None
+
+
+async def _process_analyze_floor(job: dict) -> None:
+    payload = job.get("payload") or {}
+    project_id = payload["projectId"]; floor_id = payload["floorId"]
+    supabase = get_supabase()
+    project, floor = await _get_project_floor(project_id, floor_id)
+    if not floor.get("architectural_image_path"):
+        raise RuntimeError("Floor has no architectural image path for analysis")
+
+    image_bytes = fetch_storage_bytes(floor["architectural_image_path"])
+    source_size = _image_size(image_bytes)
+    image_source = floor.get("architectural_image_url") or f"data:image/png;base64,{fetch_storage_base64(floor['architectural_image_path'])}"
+    context = {
+        "project": project,
+        "floor": floor,
+        "source_size": source_size,
+        "symbol_library": openai_client._symbol_catalog(),  # canonical prompt resource
+    }
+    analysis = await openai_client.analyze_floor_plan(image_source, context)
+    markings = _normalize_markings(analysis, source_size)
+    questions = await openai_client.generate_questions(analysis, context)
+
+    supabase.table("floors").update({
+        "status": "marking_review",
+        "ai_analysis": analysis,
+        "ai_questions": questions,
+        "design_markings": {"ai": markings},
+    }).eq("id", floor_id).execute()
+    supabase.table("bot_sessions").update({
+        "state": "ANALYZING", "current_floor_id": floor_id,
+    }).eq("project_id", project_id).execute()
+
+    if project.get("telegram_chat_id"):
+        text = (
+            f"I analyzed {floor['floor_name']}. The engineering dashboard now has "
+            "GPT-5.5 marking candidates and clarification questions for review."
+        )
+        await send_message(project["telegram_chat_id"], text)
+        supabase.table("conversations").insert({
+            "project_id": project_id, "floor_id": floor_id, "sender": "bot", "message": text,
+        }).execute()
 
 
 async def _process_telegram_image(job: dict) -> None:
@@ -205,15 +294,14 @@ async def _process_telegram_image(job: dict) -> None:
     supabase.table("floors").update({
         "architectural_pdf_url": None, "architectural_image_url": public_url,
         "architectural_pdf_path": None, "architectural_image_path": storage_path,
-        "status": "designing",
+        "status": "analyzing",
     }).eq("id", floor_id).execute()
 
     supabase.table("bot_sessions").update({
-        "state": "DESIGNING", "current_floor_id": floor_id,
+        "state": "ANALYZING", "current_floor_id": floor_id,
     }).eq("project_id", project_id).execute()
 
-    # Skip the analyze/questions pre-pass entirely — go straight to design.
-    await create_job("generate_design", {"projectId": project_id, "floorId": floor_id})
+    await create_job("analyze_floor", {"projectId": project_id, "floorId": floor_id})
 
 
 async def _process_generate_design(job: dict) -> None:
@@ -240,6 +328,10 @@ async def _process_generate_design(job: dict) -> None:
         raise RuntimeError("Floor has no architectural image source for deterministic plan rendering")
 
     architect_desc = (floor.get("architect_answers") or {}).get("raw") if floor.get("architect_answers") else None
+    confirmed_markings = _markings_for_generation(floor)
+    review_answers = floor.get("review_answers") if isinstance(floor.get("review_answers"), dict) else {}
+    previous_plan_spec = _fetch_previous_plan_spec(floor_id) if improvement_request else None
+    previous_design_image_url = existing[0].get("design_image_url") if improvement_request and existing else None
     log.info("[jobs:generate_design] OpenAI JSON plan specification started job=%s v=%s", job["id"], version)
     plan_spec = await openai_client.create_plan_spec(
         project_id=project_id, floor_id=floor_id,
@@ -249,6 +341,11 @@ async def _process_generate_design(job: dict) -> None:
         architect_description=architect_desc,
         special_requirements=project.get("special_requirements"),
         improvement_request=improvement_request,
+        analysis=floor.get("ai_analysis"),
+        confirmed_markings=confirmed_markings,
+        review_answers=review_answers,
+        previous_plan_spec=previous_plan_spec,
+        previous_design_image_url=previous_design_image_url,
     )
 
     log.info("[jobs:generate_design] Python deterministic render started job=%s v=%s", job["id"], version)
@@ -368,9 +465,7 @@ async def process_next_job() -> dict:
         elif kind in ("generate_design", "revision_design"):
             await _process_generate_design(job)
         elif kind == "analyze_floor":
-            # Legacy job kind — short-circuit to direct design.
-            payload = job.get("payload") or {}
-            await create_job("generate_design", payload)
+            await _process_analyze_floor(job)
         else:
             log.warning("Unhandled job type: %s", kind)
         await _complete_job(job["id"])
@@ -416,13 +511,14 @@ async def retry_failed_job(job_id: str) -> dict:
         "run_after": datetime.now(timezone.utc).isoformat(),
     }).eq("id", job_id).execute()
     job = resp.data[0]
-    if job["type"] in ("generate_design", "revision_design"):
+    if job["type"] in ("analyze_floor", "generate_design", "revision_design"):
         payload = job.get("payload") or {}
         pid = payload.get("projectId"); fid = payload.get("floorId")
         if pid and fid:
-            supabase.table("floors").update({"status": "designing"}).eq("id", fid).execute()
+            is_analysis = job["type"] == "analyze_floor"
+            supabase.table("floors").update({"status": "analyzing" if is_analysis else "designing"}).eq("id", fid).execute()
             supabase.table("bot_sessions").update({
-                "state": "DESIGNING", "current_floor_id": fid,
+                "state": "ANALYZING" if is_analysis else "DESIGNING", "current_floor_id": fid,
             }).eq("project_id", pid).execute()
     await trigger_job_processing()
     return job

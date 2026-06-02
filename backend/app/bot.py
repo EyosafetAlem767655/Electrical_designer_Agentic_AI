@@ -202,11 +202,48 @@ def _current_floor(project_id: str, current_floor_index: int) -> dict:
     return resp.data
 
 
+def _project_floors(project_id: str) -> list[dict]:
+    supabase = get_supabase()
+    return supabase.table("floors").select("*").eq("project_id", project_id).order("floor_number").execute().data or []
+
+
 def _create_floors(project: dict, names: list[str]) -> list[dict]:
     supabase = get_supabase()
     rows = [{"project_id": project["id"], "floor_name": name, "floor_number": i} for i, name in enumerate(names)]
     resp = supabase.table("floors").upsert(rows, on_conflict="project_id,floor_number").execute()
     return sorted(resp.data, key=lambda f: f["floor_number"])
+
+
+async def _begin_floor_image_intake(project: dict, session: dict, chat_id: int) -> dict:
+    floors = _project_floors(project["id"])
+    if not floors:
+        updated = _update_session(session["id"], {"project_id": project["id"], "state": "AWAITING_ADMIN_FLOORS", "telegram_chat_id": chat_id})
+        await _bot_reply(
+            chat_id,
+            project["id"],
+            None,
+            "You are verified, but this project has no dashboard-created floor sequence yet. Please ask the admin to add the floors, then send /start again from the project link.",
+        )
+        return updated
+    current_index = project.get("current_floor") or 0
+    current = floors[min(current_index, len(floors) - 1)]
+    try:
+        get_supabase().table("projects").update({"status": "in_progress", "current_floor": current.get("floor_number") or 0}).eq("id", project["id"]).execute()
+    except Exception:
+        get_supabase().table("projects").update({"status": "in_progress"}).eq("id", project["id"]).execute()
+    updated = _update_session(session["id"], {
+        "project_id": project["id"],
+        "state": "AWAITING_IMAGE",
+        "current_floor_id": current["id"],
+        "telegram_chat_id": chat_id,
+    })
+    await _bot_reply(
+        chat_id,
+        project["id"],
+        current["id"],
+        f"You're verified for {project['project_name']}. Please send a clear PNG or JPG image for {current['floor_name']}. Add any design guides or constraints as the image caption.",
+    )
+    return updated
 
 
 async def handle_telegram_update(update: dict) -> dict:
@@ -265,18 +302,16 @@ async def handle_telegram_update(update: dict) -> dict:
                              "I'm sorry, I could not verify that start code, full name, and project name. Please check the project-specific link and exact assignment details with your project admin.")
             return {"ok": True}
         _verify_project(project, message, session)
-        session = _update_session(session["id"], {
-            "project_id": project["id"], "state": "COLLECTING_PURPOSE", "telegram_chat_id": chat_id,
-        })
-        await _bot_reply(chat_id, project["id"], None,
-                         f"Great! You're verified for project {project['project_name']}. "
-                         "What is the primary purpose of this building? For example: residential, commercial, "
-                         "mixed-use, industrial, hospital, hotel, or school.")
+        await _begin_floor_image_intake(project, session, chat_id)
         return {"ok": True}
 
     project = supabase.table("projects").select("*").eq("id", session["project_id"]).single().execute().data
 
     state = session.get("state")
+
+    if state in ("COLLECTING_PURPOSE", "AWAITING_FLOOR_COUNT", "AWAITING_FLOOR_NAMES", "COLLECTING_SPECIAL_REQUIREMENTS"):
+        await _begin_floor_image_intake(project, session, chat_id)
+        return {"ok": True}
 
     if state == "COLLECTING_PURPOSE":
         supabase.table("projects").update({"building_purpose": text}).eq("id", project["id"]).execute()
@@ -343,9 +378,9 @@ async def handle_telegram_update(update: dict) -> dict:
             "fileId": image["fileId"], "filename": image["filename"], "contentType": image["contentType"],
         })
         await jobs.trigger_job_processing()
-        _update_session(session["id"], {"state": "DESIGNING", "current_floor_id": floor_id})
+        _update_session(session["id"], {"state": "ANALYZING", "current_floor_id": floor_id})
         await _bot_reply(chat_id, project["id"], floor_id,
-                         "Image received. I am generating the electrical drawing now and will send it back here when ready.")
+                         "Image received. I am analyzing the plan and preparing GPT-5.5 marking candidates for engineering review in the dashboard.")
         return {"ok": True}
 
     if state == "DESIGNING" and text and session.get("current_floor_id"):

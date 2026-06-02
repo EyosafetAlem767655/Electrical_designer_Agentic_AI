@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 
-SYMBOL_CODES = ["MSU", "ATS", "G", "DB", "FL", "EL", "SW", "SO", "FA", "CCTV/DATA"]
+SYMBOL_CODES = [
+    "MSU", "ATS", "G", "DB", "FL", "EL", "SW", "SO", "FA", "CCTV/DATA",
+    "AC", "EF", "WH", "PUMP", "COOKER", "EV", "LIFT", "MACHINE", "EQUIP",
+]
 
 
 @dataclass(frozen=True)
@@ -12,6 +15,9 @@ class SymbolDefinition:
     default_specification: str
     unit: str
     color: str
+    prompt_guidance: str = ""
+    boq_mapping: str = ""
+    renderer_shape: str = ""
 
 
 SYMBOL_DICTIONARY: dict[str, SymbolDefinition] = {
@@ -35,6 +41,24 @@ SYMBOL_DICTIONARY: dict[str, SymbolDefinition] = {
                            "Fire alarm", "Fire alarm device or detector", "No.", "#e32020"),
     "CCTV/DATA": SymbolDefinition("CCTV/DATA", "CCTV or Data Point", "Low-current CCTV or data point",
                                   "Low current", "CCTV/data point with low-current containment", "No.", "#555555"),
+    "AC": SymbolDefinition("AC", "Air Conditioner", "Split or packaged air-conditioning load point",
+                           "Mechanical power", "Dedicated AC supply point with local isolator, rating to be verified", "No.", "#0f766e"),
+    "EF": SymbolDefinition("EF", "Extractor Fan", "Ventilation or extractor fan point",
+                           "Mechanical power", "Extractor fan point with local control/isolator", "No.", "#4b5563"),
+    "WH": SymbolDefinition("WH", "Water Heater", "Electric water heater load point",
+                           "Power", "Dedicated water-heater circuit with local isolator", "No.", "#0ea5e9"),
+    "PUMP": SymbolDefinition("PUMP", "Pump", "Water, sump, or booster pump load point",
+                             "Mechanical power", "Dedicated pump supply with starter/protection as required", "No.", "#2563eb"),
+    "COOKER": SymbolDefinition("COOKER", "Cooker", "Dedicated cooker or kitchen equipment point",
+                               "Power", "Dedicated cooker control unit and final connection point", "No.", "#b45309"),
+    "EV": SymbolDefinition("EV", "EV Charger", "Dedicated electric vehicle charging point",
+                           "EV charging", "EV charger point with dedicated protection and load management verification", "No.", "#16a34a"),
+    "LIFT": SymbolDefinition("LIFT", "Lift", "Lift or elevator electrical supply point",
+                             "Vertical transport", "Lift feeder and isolator, final rating by lift vendor", "No.", "#7c3aed"),
+    "MACHINE": SymbolDefinition("MACHINE", "Machine Load", "Dedicated machinery or industrial equipment supply",
+                                "Industrial power", "Dedicated machinery circuit, protection and cable size by final load schedule", "No.", "#be123c"),
+    "EQUIP": SymbolDefinition("EQUIP", "Equipment Point", "Generic dedicated electrical equipment point",
+                              "Power", "Dedicated equipment point, final load to be verified", "No.", "#64748b"),
 }
 
 
@@ -62,3 +86,30 @@ def boq_item_for_symbol(symbol: str, quantity: float) -> dict:
         "standard": "EBCS fire safety / IEC" if symbol == "FA" else "EBCS / IEC 60364",
         "notes": "Quantity generated from validated visible drawing specification",
     }
+
+
+def prompt_guidance_for_symbol(symbol: str) -> str:
+    item = SYMBOL_DICTIONARY[symbol]
+    return item.prompt_guidance or f"Use {symbol} only where {item.description.lower()} is required or clearly implied."
+
+
+def boq_mapping_for_symbol(symbol: str) -> str:
+    item = SYMBOL_DICTIONARY[symbol]
+    return item.boq_mapping or item.label
+
+
+def renderer_shape_for_symbol(symbol: str) -> str:
+    item = SYMBOL_DICTIONARY[symbol]
+    if item.renderer_shape:
+        return item.renderer_shape
+    if symbol == "FL":
+        return "rounded luminaire rectangle"
+    if symbol == "EL":
+        return "emergency triangle"
+    if symbol == "SO":
+        return "socket rectangle"
+    if symbol == "G":
+        return "generator circle"
+    if symbol == "CCTV/DATA":
+        return "data camera tag"
+    return "labeled equipment tag"

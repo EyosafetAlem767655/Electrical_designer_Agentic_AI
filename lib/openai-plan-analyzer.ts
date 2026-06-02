@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { getEnv } from "@/lib/env";
 import { normalizePlanSpec, planSpecJsonSchema, validatePlanSymbolConsistency, type PlanSpec } from "@/lib/plan-schema";
-import { SYMBOL_CODES } from "@/lib/symbol-dictionary";
+import { SYMBOL_CODES, SYMBOL_DICTIONARY, symbolBoqMapping, symbolPromptGuidance, symbolRendererShape } from "@/lib/symbol-dictionary";
 
 type ResponsesPayload = {
   output_text?: string;
@@ -87,6 +87,20 @@ function strictJsonFormat(name: string) {
   };
 }
 
+function symbolCatalog() {
+  return Object.values(SYMBOL_DICTIONARY).map((item) => ({
+    symbol: item.symbol,
+    label: item.label,
+    description: item.description,
+    category: item.category,
+    default_specification: item.defaultSpecification,
+    unit: item.unit,
+    prompt_guidance: symbolPromptGuidance(item.symbol),
+    boq_mapping: symbolBoqMapping(item.symbol),
+    renderer_shape: symbolRendererShape(item.symbol)
+  }));
+}
+
 async function persistFailedOutput(projectId: string, floorId: string, raw: string, reason: string) {
   const path = join(tmpdir(), `failed-plan-spec-${projectId}-${floorId}-${Date.now()}.json`);
   await writeFile(path, JSON.stringify({ projectId, floorId, reason, raw }, null, 2), "utf8").catch(() => undefined);
@@ -138,6 +152,10 @@ export async function createPlanSpecWithOpenAI(input: {
   sourceImageUrl: string;
   feedback: unknown;
   analysis?: unknown;
+  confirmedMarkings?: unknown;
+  reviewAnswers?: unknown;
+  previousPlanSpec?: unknown;
+  previousDesignImageUrl?: string | null;
   specialRequirements?: string | null;
   improvementRequest?: string | null;
 }) {
@@ -145,7 +163,8 @@ export async function createPlanSpecWithOpenAI(input: {
 
 The renderer, not the model, will draw the final technical plan. Do not describe artwork. Do not generate images. Use exact coordinates in source-image pixels. If source dimensions are unknown, estimate image_width/image_height and keep coordinates in that same estimated pixel space.
 
-Allowed symbols only: ${SYMBOL_CODES.join(", ")}.
+Symbol library (the renderer can draw only these):
+${JSON.stringify(symbolCatalog(), null, 2)}
 Required defaults unless explicitly changed: FL fluorescent lights, SW manual switches, SO 220V earthed socket outlets.
 Routes policy:
 - Do not create point-to-point branch wiring for every symbol.
@@ -154,6 +173,12 @@ Routes policy:
 - The Python renderer will generate readable orthogonal trunk-and-branch circuits by layer.
 - Lighting routes must be blue. Emergency lighting routes must be red. Do not mix main lighting and emergency lighting.
 Do not design anything outside the floor boundary. If room identity is uncertain, use a clean label with VERIFY warning.
+Confirmed full-plan markings in original source-image pixels override inferred guesses:
+${truncate(input.confirmedMarkings)}
+Use the confirmed boundary_polygon for the PlanSpec boundary. Place MSU/DB/ATS in db_room_bbox when present. Place G in generator_room_bbox when present unless the review answers override it.
+
+Web review answers / clarifications:
+${truncate(input.reviewAnswers)}
 Do not invent labels such as S5, BB, EB, OO, T, random numbers, or EV unless defined and requested. EV must not appear unless explicitly requested.
 Main distribution should be traceable: utility incomer -> MSU -> ATS -> DB. If generator backup is requested or implied, show G / 80 kVA in storage/generator area and route G -> ATS.
 Legend and BOQ must include only visible symbols and BOQ quantities must equal the visible equipment/devices.
@@ -169,7 +194,18 @@ Building purpose: ${input.buildingPurpose ?? "not specified"}
 Special requirements: ${input.specialRequirements ?? "none"}
 Improvement request: ${input.improvementRequest ?? "none"}
 Architect feedback/context: ${truncate(input.feedback)}
-Existing image analysis: ${truncate(input.analysis)}`;
+Existing image analysis: ${truncate(input.analysis)}
+Previous PlanSpec for revision continuity:
+${truncate(input.previousPlanSpec, 16000)}
+
+For revisions, use the previous rendered PNG only as QA context. Do not use image generation and do not ask for new boundary marks.`;
+
+  const content: Array<Record<string, unknown>> = [{ type: "input_image", image_url: input.sourceImageUrl, detail: "high" }];
+  if (input.previousDesignImageUrl) {
+    content.push({ type: "input_text", text: "Previous rendered design PNG for revision QA context:" });
+    content.push({ type: "input_image", image_url: input.previousDesignImageUrl, detail: "high" });
+  }
+  content.push({ type: "input_text", text: prompt });
 
   const { text: firstText, raw } = await openAiResponses(
     {
@@ -184,10 +220,7 @@ Existing image analysis: ${truncate(input.analysis)}`;
         },
         {
           role: "user",
-          content: [
-            { type: "input_image", image_url: input.sourceImageUrl, detail: "high" },
-            { type: "input_text", text: prompt }
-          ]
+          content
         }
       ]
     },

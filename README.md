@@ -6,7 +6,7 @@ Agentic electrical design dashboard and Telegram intake system for floor-by-floo
 
 This repo contains two services:
 
-- **`/` (Next.js, Vercel)** — Frontend dashboard + architect-facing web app. Reads project state directly from Supabase for realtime UI.
+- **`/` (Next.js, Vercel)** — Frontend dashboard + architect-facing web app. Reads project state directly from Supabase for realtime UI and proxies workflow mutations to FastAPI when `BACKEND_BASE_URL` is set.
 - **`/backend` (Python FastAPI)** — Agent orchestration: Telegram bot state machine, OpenAI plan-spec generation, deterministic Pillow renderer, Supabase persistence, job queue. See [`backend/README.md`](backend/README.md).
 
 The Python backend replaces the legacy TypeScript orchestration under `lib/` and `app/api/`. The legacy code is kept for now as reference; once the frontend proxies its API calls to `BACKEND_BASE_URL`, the `lib/*.ts` orchestration files can be removed.
@@ -16,7 +16,7 @@ The Python backend replaces the legacy TypeScript orchestration under `lib/` and
 1. Copy `.env.example` to `.env.local` and fill in real values.
 2. Rotate any credentials that were ever pasted into chat or logs before production use.
 3. Run `npm.cmd install`.
-4. Apply every SQL file in `supabase/migrations/` in order in the Supabase SQL editor. Existing databases created from older migrations must include `003_design_boq_items.sql`; otherwise generated designs can save without persistent BOQ export.
+4. Apply every SQL file in `supabase/migrations/` in order in the Supabase SQL editor. Existing databases created from older migrations must include `003_design_boq_items.sql` and `006_marking_review_workflow.sql`; otherwise generated designs can save without persistent BOQ export or marking review fields.
 5. Create a Supabase Storage bucket named `project-files`.
 6. Enable Supabase Realtime on `projects`, `floors`, and `designs`.
 7. Set `JOB_SECRET` and `CRON_SECRET` to the same strong value in production. The app triggers queued jobs when they are created, and the Hobby-compatible daily cron is only a fallback.
@@ -30,7 +30,7 @@ The generation pipeline uses OpenAI vision/reasoning to create a strict structur
 
 BOQ generation is produced from the OpenAI structured plan and rendered drawing. Visible lamps, switches, sockets, DB/protection items, emergency/fire/data devices, generator/ATS items, and route allowances are counted from the planned visible symbols; uncertain cable/conduit lengths should be marked for site verification rather than replaced with generic template quantities.
 
-Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. Optional OpenAI overrides: `OPENAI_DESIGN_MODEL` and `OPENAI_ANALYSIS_MODEL` default to `gpt-5.5`. The job runtime must also provide Python 3 and Pillow for `scripts/render_plan.py`; set `PYTHON_RENDERER_COMMAND` if the executable is not on the default `python3`/`python` path.
+Set `OPENAI_API_KEY` in Vercel; the existing alias `OPEN_AI_KEY` is also supported. Optional OpenAI overrides: `OPENAI_DESIGN_MODEL` and `OPENAI_ANALYSIS_MODEL` default to `gpt-5.5`. Set `BACKEND_BASE_URL` when the FastAPI service is deployed so Next.js routes proxy orchestration to Python. The local TypeScript worker remains as a development fallback.
 
 After adding or changing Vercel environment variables, redeploy the project so runtime functions receive the new values.
 
@@ -88,11 +88,12 @@ curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
 
 Default flow:
 
-1. Create the project in the dashboard with company name, architect full name, and project name.
+1. Create the project in the dashboard with company name, architect full name, project name, floor sequence, and special electrical requirements.
 2. Open the project page and send the bot start link to the architect.
 3. The architect clicks Start.
 4. The bot asks for full name and project name.
-5. If both match the project record, the floor-by-floor intake continues.
+5. If both match the project record, the bot asks only for the current floor image. The architect can add guides or constraints in the image caption.
+6. GPT analyzes the floor image and prepares marking candidates/questions for the webapp. The engineer confirms the full-plan boundary, DB room, generator/store room, and answers in the dashboard, then queues deterministic generation.
 
 Optional group binding is still supported with `/bind PROJECT_CODE`, but Telegram Bot API cannot send messages directly to invite links such as `https://t.me/+...`.
 

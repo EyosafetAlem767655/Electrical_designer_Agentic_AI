@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { proxyToBackend } from "@/lib/backend";
 import { getEnv, getRequestBaseUrl } from "@/lib/env";
 import { hasSupabaseServerEnv } from "@/lib/supabase";
 import { getTelegramWebhookInfo, setTelegramWebhook } from "@/lib/telegram";
@@ -59,6 +60,12 @@ export async function POST(request: Request) {
 
   try {
     const url = webhookUrl(request);
+    const proxied = await proxyToBackend("/telegram/setup", {
+      method: "POST",
+      body: JSON.stringify({ url, secret_token: webhookSecret() })
+    });
+    if (proxied) return NextResponse.json(proxied.body, { status: proxied.response.status });
+
     await setTelegramWebhook(url, webhookSecret());
     const info = await getTelegramWebhookInfo();
     return NextResponse.json({ ok: true, url, ...setupStatus(request, info) });

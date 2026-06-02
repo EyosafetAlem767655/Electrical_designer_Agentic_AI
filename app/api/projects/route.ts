@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { proxyToBackend } from "@/lib/backend";
 import { makeProjectCode } from "@/lib/constants";
 import { getProjects } from "@/lib/data";
 import { getEnv, getRequestBaseUrl } from "@/lib/env";
@@ -18,6 +19,9 @@ const createProjectSchema = z.object({
   architectTelegramUsername: z.string().optional().nullable(),
   companyName: z.string().optional(),
   buildingPurpose: z.string().optional(),
+  specialRequirements: z.string().optional(),
+  floorNames: z.string().optional(),
+  totalFloors: z.union([z.string(), z.number()]).optional(),
   groupChatId: z.union([z.string(), z.number()]).optional().nullable(),
   telegramGroupInviteLink: z.string().optional().nullable(),
   buildingAddress: z.string().optional(),
@@ -37,6 +41,10 @@ type ProjectInsert = {
   building_purpose: string | null;
   building_address: string | null;
   notes: string | null;
+  special_requirements: string | null;
+  total_floors: number;
+  floor_sequence: string[];
+  current_floor: number;
   group_chat_id: number | null;
   status: "created" | "awaiting_verification";
   telegram_group_invite_link?: string | null;
@@ -74,6 +82,24 @@ async function insertProject(supabase: ReturnType<typeof getSupabaseAdmin>, row:
     building_purpose: row.building_purpose,
     status: row.status
   });
+}
+
+function floorNamesFromInput(input: z.infer<typeof createProjectSchema>) {
+  const names = (input.floorNames ?? "")
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (names.length) return names;
+  const count = typeof input.totalFloors === "number" ? input.totalFloors : Number(input.totalFloors);
+  if (Number.isFinite(count) && count > 0) return Array.from({ length: Math.floor(count) }, (_, index) => `Floor ${index + 1}`);
+  return ["Basement"];
+}
+
+async function upsertProjectFloors(supabase: ReturnType<typeof getSupabaseAdmin>, projectId: string, floorNames: string[]) {
+  const rows = floorNames.map((floor_name, floor_number) => ({ project_id: projectId, floor_name, floor_number }));
+  const { data, error } = await supabase.from("floors").upsert(rows, { onConflict: "project_id,floor_number" }).select("*").order("floor_number", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
 }
 
 async function updateOutreachStatus(supabase: ReturnType<typeof getSupabaseAdmin>, projectId: string, status: string) {
@@ -210,11 +236,36 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const input = createProjectSchema.parse(await request.json());
+    const floorNames = floorNamesFromInput(input);
+    const proxied = await proxyToBackend("/projects/init", {
+      method: "POST",
+      body: JSON.stringify({
+        project_name: input.projectName,
+        architect_name: input.architectName,
+        architect_telegram_username: input.architectTelegramUsername,
+        building_purpose: input.buildingPurpose,
+        special_requirements: input.specialRequirements,
+        floor_names: floorNames,
+        total_floors: floorNames.length
+      })
+    });
+    if (proxied) {
+      const body = proxied.body as { project?: Project; invite_link?: string; [key: string]: unknown };
+      return NextResponse.json(
+        {
+          ...body,
+          botStartLink: body.invite_link ?? botStartLink(body.project?.project_code ?? body.project?.id),
+          bindCommand: body.project ? `/bind ${body.project.project_code ?? body.project.id}` : undefined
+        },
+        { status: proxied.response.status }
+      );
+    }
+
     if (!hasSupabaseServerEnv()) {
       return NextResponse.json({ ok: false, error: "Supabase environment variables are required to create projects." }, { status: 503 });
     }
 
-    const input = createProjectSchema.parse(await request.json());
     const webhook = await ensureWebhookIfPossible(request);
     const supabase = getSupabaseAdmin();
     const parsedGroup = parseTelegramGroupInput(input.groupChatId);
@@ -229,6 +280,10 @@ export async function POST(request: Request) {
       architect_telegram_username: architectTelegramUsername,
       company_name: input.companyName || null,
       building_purpose: input.buildingPurpose || null,
+      special_requirements: input.specialRequirements || null,
+      total_floors: floorNames.length,
+      floor_sequence: floorNames,
+      current_floor: 0,
       building_address: input.buildingAddress || null,
       notes: input.notes || null,
       group_chat_id: parsedGroup.chatId,
@@ -237,6 +292,7 @@ export async function POST(request: Request) {
       status: parsedGroup.chatId ? "awaiting_verification" : "created"
     });
     if (error) throw error;
+    const floors = await upsertProjectFloors(supabase, project.id, floorNames);
 
     let warning: string | null = null;
     const typedProject = project as Project;
@@ -259,6 +315,7 @@ export async function POST(request: Request) {
       {
         ok: true,
         project,
+        floors,
         botStartLink: botStartLink(project.project_code ?? project.id),
         bindCommand: `/bind ${project.project_code ?? project.id}`,
         webhook,

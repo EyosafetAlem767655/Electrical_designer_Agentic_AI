@@ -90,6 +90,8 @@ const routeStyles: Record<string, { color: string; width: number; dash?: number[
   cctv_data: { color: "#555555", width: 3, dash: [6, 8] }
 };
 
+const powerLoadSymbols = new Set<SymbolCode>(["AC", "EF", "WH", "PUMP", "COOKER", "EV", "LIFT", "MACHINE", "EQUIP"]);
+
 function drawNodeText(ctx: CanvasContext, text: string, x: number, y: number, options: { size?: number; weight?: string; color?: string; align?: CanvasTextAlign } = {}) {
   ctx.font = `${options.weight ?? "600"} ${options.size ?? 14}px Arial`;
   ctx.fillStyle = options.color ?? "#111111";
@@ -269,7 +271,11 @@ async function renderNodeFallback(input: RenderInput, baseBuffer: Buffer): Promi
   haloRoute([ats, [db[0], ats[1]], db], "main_distribution");
   if (gen) haloRoute([gen, [gen[0], ats[1]], ats], "generator_backup");
   drawBus((byType.get("FL") ?? []).slice(0, 42), "lighting", "L");
-  drawBus((byType.get("SO") ?? []).slice(0, 22), "power_socket", "P");
+  const powerPoints = [
+    ...(byType.get("SO") ?? []),
+    ...Array.from(powerLoadSymbols).flatMap((symbol) => byType.get(symbol) ?? [])
+  ];
+  drawBus(powerPoints.slice(0, 42), "power_socket", "P");
   drawBus((byType.get("SW") ?? []).slice(0, 16), "switch_control", "SW");
   drawLoop((byType.get("EL") ?? []).slice(0, 14), "emergency_lighting", "E1");
   drawLoop((byType.get("FA") ?? []).slice(0, 14), "fire_alarm", "FA1");

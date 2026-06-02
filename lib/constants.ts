@@ -15,6 +15,7 @@ export const FLOOR_STATUS_LABELS: Record<FloorStatus, string> = {
   pdf_received: "PDF Received",
   image_received: "Image Received",
   analyzing: "Analyzing",
+  marking_review: "Marking Review",
   questions_sent: "Questions Sent",
   designing: "Designing",
   design_ready: "Design Ready",
@@ -32,7 +33,16 @@ export const DEFAULT_SYMBOL_LEGEND: SymbolLegendItem[] = [
   { symbol: "SW", label: "Switch", color: "#008b4a", description: "Manual lighting switch near entrance/control point" },
   { symbol: "SO", label: "Socket Outlet", color: "#6a38b1", description: "220-230V earthed socket outlet" },
   { symbol: "FA", label: "Fire Alarm Device", color: "#e32020", description: "Smoke/heat detector or manual call point" },
-  { symbol: "CCTV/DATA", label: "CCTV or Data Point", color: "#555555", description: "Data, telecom, intercom, or CCTV point" }
+  { symbol: "CCTV/DATA", label: "CCTV or Data Point", color: "#555555", description: "Data, telecom, intercom, or CCTV point" },
+  { symbol: "AC", label: "Air Conditioner", color: "#0f766e", description: "Split or packaged air-conditioning load point" },
+  { symbol: "EF", label: "Extractor Fan", color: "#4b5563", description: "Ventilation or extractor fan point" },
+  { symbol: "WH", label: "Water Heater", color: "#0ea5e9", description: "Electric water heater load point" },
+  { symbol: "PUMP", label: "Pump", color: "#2563eb", description: "Water, sump, or booster pump load point" },
+  { symbol: "COOKER", label: "Cooker", color: "#b45309", description: "Dedicated cooker or kitchen equipment point" },
+  { symbol: "EV", label: "EV Charger", color: "#16a34a", description: "Dedicated electric vehicle charging point" },
+  { symbol: "LIFT", label: "Lift", color: "#7c3aed", description: "Lift or elevator electrical supply point" },
+  { symbol: "MACHINE", label: "Machine Load", color: "#be123c", description: "Dedicated machinery or industrial equipment supply" },
+  { symbol: "EQUIP", label: "Equipment Point", color: "#64748b", description: "Generic dedicated electrical equipment point" }
 ];
 
 export const ELECTRICAL_SYSTEM_PROMPT = `You are an expert electrical installation engineer specializing in Ethiopian building standards (EBCS - Ethiopian Building Code Standards) and IEC/EU-style installation practice, not US NEC practice. You design practical, buildable electrical systems for real buildings including power distribution, lighting, socket outlet placement, distribution board sizing, circuit design, emergency lighting, fire alarm, earthing, and low-current systems.

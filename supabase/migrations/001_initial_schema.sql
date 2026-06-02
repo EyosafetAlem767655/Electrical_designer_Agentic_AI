@@ -35,10 +35,12 @@ create table if not exists floors (
   architectural_image_url text,
   architectural_pdf_path text,
   architectural_image_path text,
-  status text default 'pending' check (status in ('pending', 'pdf_received', 'image_received', 'analyzing', 'questions_sent', 'designing', 'design_ready', 'revision_requested', 'approved')),
+  status text default 'pending' check (status in ('pending', 'pdf_received', 'image_received', 'analyzing', 'marking_review', 'questions_sent', 'designing', 'design_ready', 'revision_requested', 'approved')),
   architect_answers jsonb default '{}'::jsonb,
+  review_answers jsonb default '{}'::jsonb,
   ai_questions jsonb default '[]'::jsonb,
   ai_analysis jsonb default '{}'::jsonb,
+  design_markings jsonb default '{}'::jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   unique(project_id, floor_number)

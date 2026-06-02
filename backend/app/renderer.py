@@ -58,6 +58,8 @@ ROUTE_STYLES = {
     "cctv_data":          {"label": "CCTV / Data Route",           "color": (105, 55, 160, 230), "width": 3, "dash": (4, 8)},
 }
 
+POWER_LOAD_SYMBOLS = {"AC", "EF", "WH", "PUMP", "COOKER", "EV", "LIFT", "MACHINE", "EQUIP"}
+
 
 def _font(size: int, bold: bool = False) -> ImageFont.ImageFont:
     candidates = [
@@ -199,6 +201,11 @@ _BG = {
     "FL": (255, 255, 255, 245), "EL": (225, 250, 232, 245),
     "SW": (245, 245, 245, 245), "SO": (255, 244, 226, 245),
     "FA": (255, 229, 229, 245), "CCTV/DATA": (238, 229, 253, 245),
+    "AC": (224, 248, 246, 245), "EF": (236, 238, 241, 245),
+    "WH": (224, 244, 255, 245), "PUMP": (229, 239, 255, 245),
+    "COOKER": (255, 240, 218, 245), "EV": (225, 250, 232, 245),
+    "LIFT": (241, 232, 255, 245), "MACHINE": (255, 229, 236, 245),
+    "EQUIP": (238, 242, 246, 245),
 }
 _OUTLINE = (20, 20, 20, 255)
 
@@ -236,11 +243,15 @@ def _draw_symbol(draw, x, y, sym, label, fonts, *, small=False):
     elif sym == "CCTV/DATA":
         draw.rounded_rectangle([x - 24 * s, y - 13 * s, x + 18 * s, y + 13 * s], radius=4, fill=bg, outline=_OUTLINE, width=2)
         draw.polygon([(x + 18 * s, y - 8 * s), (x + 31 * s, y), (x + 18 * s, y + 8 * s)], fill=bg, outline=_OUTLINE)
+    elif sym in POWER_LOAD_SYMBOLS:
+        w, h = 58 * s, 36 * s
+        draw.rounded_rectangle([x - w / 2, y - h / 2, x + w / 2, y + h / 2], radius=6, fill=bg, outline=_OUTLINE, width=2)
+        draw.line([x - w / 2 + 6, y + h / 2 - 8, x + w / 2 - 6, y + h / 2 - 8], fill=_OUTLINE, width=2)
     short = sym if len(sym) <= 4 else "DATA"
     fnt = fonts["tiny"] if small else fonts["small_bold"]
     bb = draw.textbbox((0, 0), short, font=fnt)
     draw.text((x - (bb[2] - bb[0]) / 2, y - (bb[3] - bb[1]) / 2), short, font=fnt, fill=(0, 0, 0, 255))
-    if label and not small and sym in {"MSU", "DB", "ATS", "G"}:
+    if label and not small and (sym in {"MSU", "DB", "ATS", "G"} or sym in POWER_LOAD_SYMBOLS):
         _label_box(draw, (x + int(40 * s), y - 18), label, fonts["small"], max_w=180)
 
 
@@ -341,8 +352,8 @@ def _build_routes(devices: list[dict], equipment_pos: dict, boundary: list) -> l
             p = d["location"]
             add(f"route_{d['id']}_branch", "emergency_branch", [(em_x, p[1]), p])
 
-    # Socket runs (grouped per circuit_id)
-    sos = [d for d in devices if d["type"] == "SO"]
+    # Socket and dedicated appliance/load runs (grouped per circuit_id)
+    sos = [d for d in devices if d["type"] == "SO" or d["type"] in POWER_LOAD_SYMBOLS]
     so_by_circuit: dict[str, list[dict]] = defaultdict(list)
     for d in sos:
         so_by_circuit[d.get("circuit_id") or "P1"].append(d)
