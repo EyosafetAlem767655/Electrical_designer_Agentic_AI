@@ -136,73 +136,80 @@ async def _persist_failed_output(project_id: str, floor_id: str, raw: str, reaso
 # ---------------------------------------------------------------------------
 
 DESIGN_SYSTEM_PROMPT = (
-    "You are a senior Ethiopian electrical design engineer reasoning over an "
-    "architectural floor plan. A deterministic Python renderer (not you) will "
-    "draw the final technical drawing from your JSON output. Your job is to "
-    "make the engineering decisions — locations, circuits, equipment, BOQ — "
-    "and return them as one strict JSON object. Reason like a real engineer: "
-    "consider room purposes, code requirements (EBCS / IEC 60364), human "
-    "circulation, life safety, maintainability. Do not produce prose or images."
+    "You are a senior electrical design engineer working on a real architectural floor plan. "
+    "A deterministic Python renderer will draw the final technical drawing from your JSON. "
+    "Think like a real engineer: read the image, understand room purposes from context, "
+    "and decide the layout. Return one strict JSON PlanSpec. No prose, no images."
 )
 
 
 def _build_design_prompt(*, project_name: str, floor_name: str, building_purpose: Optional[str],
                         special_requirements: Optional[str], improvement_request: Optional[str],
-                        feedback: Any, analysis: Any) -> str:
-    """Open-ended prompt — describes intent and constraints, leaves engineering judgement to the model."""
-    return f"""You are designing the electrical installation for a single floor of a real building.
+                        architect_description: Any) -> str:
+    """One open prompt — model gets the image and the architect's words, then designs."""
+    return f"""Design the electrical installation for this floor. Return one JSON PlanSpec.
 
-Goal:
-Return ONE JSON object that fully describes the electrical layout. The downstream renderer will draw it deterministically from this JSON — your symbol counts, coordinates, and circuit logic are what produce the final plan, so place items where they actually make sense for the rooms and usage you can see in the image.
+Project: {project_name}
+Floor: {floor_name}
+Building purpose: {building_purpose or "infer from the image"}
+Architect's description / requirements:
+{_truncate(architect_description) or "(none — use the image and your judgement)"}
 
-What you have:
-- An architectural floor plan image (provided below). Use its actual rooms, walls, doors, and corridors to inform the design.
-- Project: {project_name}
-- Floor: {floor_name}
-- Building purpose: {building_purpose or "not specified"}
-- Special requirements: {special_requirements or "none"}
-- Architect feedback / answers: {_truncate(feedback)}
-- Prior image analysis (may be empty or partial): {_truncate(analysis)}
-- Revision request (if any): {improvement_request or "none"}
+Special project requirements: {special_requirements or "none"}
+Revision request (if any): {improvement_request or "none"}
 
-What the JSON must contain:
-- project: {{title, drawing_type, notes}}
-- base_plan: {{image_width, image_height, scale_known}} — set image_width/height to the pixel dimensions you reason from; coordinates everywhere else must be in that same pixel space.
-- rooms: rectangles labeled with their function.
-- equipment: MSU, ATS (if applicable), DB (per floor), G (generator if applicable), each with a single location.
-- devices: FL, EL, SW, SO, FA, CCTV/DATA as appropriate to the rooms.
-- routes: keep it light — major intent only (MSU→ATS, G→ATS, ATS→DB, one high-level trunk per system if useful). The renderer will compute readable orthogonal trunk-and-branch wiring per circuit. Do NOT enumerate one route per device.
-- circuits: groupings of devices with their source DB and switch references.
-- legend: only symbols that actually appear.
-- boq: counts of visible equipment/devices only.
-- warnings: anything uncertain — use a VERIFY warning rather than guessing a room identity or fabricating equipment.
+CRITICAL — boundary:
+- First, look at the image and determine the USABLE design boundary as a polygon of points
+  (clockwise, 4–12 points, in base-image pixel coordinates). Exclude outdoor areas, ramps
+  going to other floors, voids, and anything obviously not part of this floor's interior.
+- Every single device and equipment location you return MUST fall strictly inside that polygon.
+  The renderer clips to the boundary; anything outside disappears.
+- Set base_plan.image_width / image_height to the pixel dimensions you reason in.
 
-Symbol vocabulary (use only these; the renderer cannot draw others): {", ".join(SYMBOL_CODES)}.
+What to return (JSON, schema-validated):
+- project.title — short, e.g. "{floor_name} Electrical Layout"
+- base_plan: image_width, image_height, scale_known
+- boundary_polygon: list of [x, y] points, clockwise, inside the floor
+- rooms: rectangles (bbox = [x1,y1,x2,y2]) with a label like "Parking Aisle", "DB / Meter Room"
+- equipment: one each of MSU, DB (always), ATS (if applicable), G (if generator implied / requested).
+  Place them in plant/service spaces you can identify in the image.
+- devices: FL, EL, SW, SO, FA, CCTV/DATA as appropriate. Each with a unique id.
+- circuits: group devices by id into circuits with source = "DB" (or "G" for emergency-only).
+- legend: list every symbol you actually used.
+- boq: count each visible symbol.
+- warnings: anything uncertain — use VERIFY warnings instead of guessing.
 
-Engineering principles you should apply with judgement, not as rigid rules:
-- Lighting density and layout should fit the room: a parking deck is uniform aisle grids; an office is per-room; a corridor is run-based. Avoid over-symbolling.
-- Place switches where someone would actually reach for them (near entrances/control points), not next to every fixture.
-- Socket placement should follow the room purpose (service rooms, utility, plant) — not every parking bay.
-- Emergency lighting (EL) must be on escape paths and stair/lobby zones.
-- Generator (G, default 80 kVA) feeds emergency loads via ATS; do not mix emergency with normal lighting trunks.
-- If a room's identity is unclear from the image, label it conservatively and add a VERIFY warning instead of inventing.
-- Do not introduce symbols (e.g., EV charger) that the architect did not request.
+Symbol vocabulary (the renderer can only draw these): {", ".join(SYMBOL_CODES)}.
 
-You have engineering freedom inside these principles. Make the decisions you would make if you were the responsible engineer reviewing this plan.
+Routing — IMPORTANT:
+You do NOT need to draw the wiring. The Python renderer builds clean orthogonal trunk-and-branch
+routes automatically from device positions. Return `routes: []` (empty array is fine) OR a short
+list of major intent routes (MSU→ATS, ATS→DB, G→ATS). Do not enumerate one route per device.
 
-Return JSON only — no markdown, no commentary.
+Engineering judgement (apply, don't recite):
+- Place FL fixtures with sensible spacing for the room type (parking aisles: regular grid along
+  the drive aisles; corridors: along the corridor; rooms: 1–4 per room depending on size). Avoid
+  over-symbolling — readability matters.
+- Place SW at entrances and control points only; not next to every fixture.
+- SO go in service rooms, plant rooms, near DBs — not at every parking bay unless asked.
+- EL on escape routes, near stairs, lobbies, exit signs.
+- G (default 80 kVA if not specified) feeds ATS, which feeds emergency loads.
+- If you can't identify a room, label it conservatively and add a VERIFY warning.
+
+Return JSON only.
 """
 
 
 async def create_plan_spec(*, project_id: str, floor_id: str, project_name: str, floor_name: str,
                           building_purpose: Optional[str], source_image_url: str,
-                          feedback: Any = None, analysis: Any = None,
+                          architect_description: Any = None,
                           special_requirements: Optional[str] = None,
                           improvement_request: Optional[str] = None) -> PlanSpec:
+    """Single-pass design: image + architect description → PlanSpec. No question pre-pass."""
     prompt = _build_design_prompt(
         project_name=project_name, floor_name=floor_name, building_purpose=building_purpose,
         special_requirements=special_requirements, improvement_request=improvement_request,
-        feedback=feedback, analysis=analysis,
+        architect_description=architect_description,
     )
 
     body = {

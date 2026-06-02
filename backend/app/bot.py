@@ -330,7 +330,7 @@ async def handle_telegram_update(update: dict) -> dict:
         if not image:
             await _bot_reply(chat_id, project["id"], session.get("current_floor_id"),
                              "Please upload the architectural floor plan as a clear PNG or JPG image only. "
-                             "PDFs are no longer accepted for this workflow.")
+                             "Add any design considerations as the image caption.")
             return {"ok": True}
         floor_id = session.get("current_floor_id") or _current_floor(project["id"], project.get("current_floor") or 0)["id"]
         _mark_floor_image_received(floor_id)
@@ -343,22 +343,17 @@ async def handle_telegram_update(update: dict) -> dict:
             "fileId": image["fileId"], "filename": image["filename"], "contentType": image["contentType"],
         })
         await jobs.trigger_job_processing()
-        _update_session(session["id"], {
-            "state": "DESIGNING" if text else "ANALYZING",
-            "current_floor_id": floor_id,
-        })
+        _update_session(session["id"], {"state": "DESIGNING", "current_floor_id": floor_id})
         await _bot_reply(chat_id, project["id"], floor_id,
-                         "Image and instructions received. I am analyzing the plan and preparing the deterministic electrical drawing."
-                         if text else "Image received. I am analyzing the floor plan now.")
+                         "Image received. I am generating the electrical drawing now and will send it back here when ready.")
         return {"ok": True}
 
-    if state in ("ANALYZING", "DESIGNING") and text and session.get("current_floor_id"):
+    if state == "DESIGNING" and text and session.get("current_floor_id"):
         supabase.table("floors").update({
             "architect_answers": {"raw": text, "source": "telegram_followup_feedback"}
         }).eq("id", session["current_floor_id"]).execute()
         await _bot_reply(chat_id, project["id"], session["current_floor_id"],
-                         "I added that feedback to the current floor. If processing has already started, "
-                         "the engineering dashboard can request a revision with the same note.")
+                         "Got it — I added that to the current floor's notes. The dashboard can trigger a revision with this feedback.")
         return {"ok": True}
 
     if state == "AWAITING_APPROVAL" and text and session.get("current_floor_id"):
@@ -373,23 +368,6 @@ async def handle_telegram_update(update: dict) -> dict:
         _update_session(session["id"], {"state": "DESIGNING"})
         await _bot_reply(chat_id, project["id"], session["current_floor_id"],
                          "Revision feedback received. I am generating an updated deterministic PNG and PDF.")
-        return {"ok": True}
-
-    if state == "AWAITING_ANSWERS":
-        if not text:
-            await _bot_reply(chat_id, project["id"], session.get("current_floor_id"),
-                             "Please send your answers as text so I can generate the design.")
-            return {"ok": True}
-        supabase.table("floors").update({
-            "architect_answers": {"raw": text}, "status": "designing",
-        }).eq("id", session["current_floor_id"]).execute()
-        await jobs.create_job("generate_design", {
-            "projectId": project["id"], "floorId": session["current_floor_id"],
-        })
-        await jobs.trigger_job_processing()
-        _update_session(session["id"], {"state": "DESIGNING"})
-        await _bot_reply(chat_id, project["id"], session["current_floor_id"],
-                         "Thank you. I am generating the electrical design and will send it for engineering review.")
         return {"ok": True}
 
     await _bot_reply(chat_id, project["id"], session.get("current_floor_id"),

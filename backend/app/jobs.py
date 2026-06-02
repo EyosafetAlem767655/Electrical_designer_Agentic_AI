@@ -205,50 +205,15 @@ async def _process_telegram_image(job: dict) -> None:
     supabase.table("floors").update({
         "architectural_pdf_url": None, "architectural_image_url": public_url,
         "architectural_pdf_path": None, "architectural_image_path": storage_path,
-        "status": "analyzing",
-    }).eq("id", floor_id).execute()
-
-    await create_job("analyze_floor", {"projectId": project_id, "floorId": floor_id})
-
-
-async def _process_analyze_floor(job: dict) -> None:
-    payload = job.get("payload") or {}
-    project_id = payload["projectId"]; floor_id = payload["floorId"]
-    supabase = get_supabase()
-    project, floor = await _get_project_floor(project_id, floor_id)
-    if not floor.get("architectural_image_path"):
-        raise RuntimeError("Floor has no architectural image path")
-
-    image_source = (floor.get("architectural_image_url")
-                    or fetch_storage_base64(floor["architectural_image_path"]))
-    analysis = await openai_client.analyze_floor_plan(image_source, {"project": project, "floor": floor})
-    questions = await openai_client.generate_questions(analysis, {"project": project, "floor": floor})
-
-    raw_feedback = ((floor.get("architect_answers") or {}).get("raw") or "").strip() if floor.get("architect_answers") else ""
-    has_feedback = bool(raw_feedback)
-
-    supabase.table("floors").update({
-        "status": "designing" if has_feedback else "questions_sent",
-        "ai_analysis": analysis, "ai_questions": questions,
+        "status": "designing",
     }).eq("id", floor_id).execute()
 
     supabase.table("bot_sessions").update({
-        "state": "DESIGNING" if has_feedback else "AWAITING_ANSWERS",
-        "current_floor_id": floor_id,
+        "state": "DESIGNING", "current_floor_id": floor_id,
     }).eq("project_id", project_id).execute()
 
-    if has_feedback:
-        await create_job("generate_design", {"projectId": project_id, "floorId": floor_id})
-        return
-
-    chat_id = project.get("telegram_chat_id")
-    if chat_id:
-        text = (f"I analyzed {floor['floor_name']}. Please answer these questions:\n\n"
-                + "\n".join(f"{i + 1}. {q}" for i, q in enumerate(questions)))
-        await send_message(chat_id, text)
-        supabase.table("conversations").insert({
-            "project_id": project_id, "floor_id": floor_id, "sender": "bot", "message": text,
-        }).execute()
+    # Skip the analyze/questions pre-pass entirely — go straight to design.
+    await create_job("generate_design", {"projectId": project_id, "floorId": floor_id})
 
 
 async def _process_generate_design(job: dict) -> None:
@@ -274,14 +239,14 @@ async def _process_generate_design(job: dict) -> None:
     if not source_url:
         raise RuntimeError("Floor has no architectural image source for deterministic plan rendering")
 
+    architect_desc = (floor.get("architect_answers") or {}).get("raw") if floor.get("architect_answers") else None
     log.info("[jobs:generate_design] OpenAI JSON plan specification started job=%s v=%s", job["id"], version)
     plan_spec = await openai_client.create_plan_spec(
         project_id=project_id, floor_id=floor_id,
         project_name=project["project_name"], floor_name=floor["floor_name"],
         building_purpose=project.get("building_purpose"),
         source_image_url=source_url,
-        feedback=floor.get("architect_answers"),
-        analysis=floor.get("ai_analysis"),
+        architect_description=architect_desc,
         special_requirements=project.get("special_requirements"),
         improvement_request=improvement_request,
     )
@@ -400,10 +365,12 @@ async def process_next_job() -> dict:
             await _process_telegram_image(job)
         elif kind == "telegram_image":
             await _process_telegram_image(job)
-        elif kind == "analyze_floor":
-            await _process_analyze_floor(job)
         elif kind in ("generate_design", "revision_design"):
             await _process_generate_design(job)
+        elif kind == "analyze_floor":
+            # Legacy job kind — short-circuit to direct design.
+            payload = job.get("payload") or {}
+            await create_job("generate_design", payload)
         else:
             log.warning("Unhandled job type: %s", kind)
         await _complete_job(job["id"])
